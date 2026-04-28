@@ -124,6 +124,9 @@ Here is how `@effect/sql-pg` uses `asyncPush` to turn PostgreSQL's `LISTEN` noti
 ```ts
 import { Effect, Stream } from "effect"
 import { SqlError } from "@effect/sql"
+import type { PgClient } from "@effect/sql-pg"
+
+declare const client: PgClient    // simplified: real code acquires via RcRef.get(listenClient)
 
 // Simplified version of the actual pg LISTEN implementation
 const listenChannel = (channelName: string) =>
@@ -268,6 +271,7 @@ const fetchPage = (cursor: Cursor): Effect.Effect<ApiPage, FetchError> =>
 // Stream.paginateEffect: each "page" is fetched by an Effect; the step
 // function returns [currentPageItems, Option<nextCursor>].
 // The stream emits each *individual item* after flatMapping over the pages.
+// Type after the full pipe chain (paginateEffect itself emits ApiItem[])
 const allActiveNames: Stream.Stream<string, FetchError> = Stream.paginateEffect(
   null as Cursor,
   (cursor) =>
