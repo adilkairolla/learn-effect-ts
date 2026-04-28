@@ -74,7 +74,7 @@ Three observations: `Layer.succeed` wraps a plain value into a Layer with `RIn =
 
 ### Part A — Layer constructors
 
-**`Layer.succeed(Tag, value)`** — `repos/effect/packages/effect/src/Layer.ts:772-775`
+**`Layer.succeed(Tag, value)`** — `repos/effect/packages/effect/src/Layer.ts:766-775`
 
 The simplest constructor. Takes a Tag and a value that satisfies the Tag's service shape, returns a `Layer<I, never, never>`. Use it for services with no initialization logic: in-memory stubs, plain configuration records, or test doubles.
 
@@ -90,7 +90,7 @@ const ConfigLive = Layer.succeed(AppConfig, { port: 8080, host: "localhost" })
 // Layer<AppConfig, never, never>
 ```
 
-**`Layer.effect(Tag, makeEffect)`** — `repos/effect/packages/effect/src/Layer.ts:289-292`
+**`Layer.effect(Tag, makeEffect)`** — `repos/effect/packages/effect/src/Layer.ts:285-292`
 
 When the service must be built via an Effect — because construction is async, reads config, or needs another service — use `Layer.effect`. The Effect's `R` becomes the Layer's `RIn`:
 
@@ -125,7 +125,7 @@ declare function openPool(host: string, port: number): Promise<{ query: (s: stri
 
 The `DatabaseLive` Layer now *requires* `AppConfig`. That requirement surfaces in the type and must be satisfied before the Layer can be run — which is exactly what `Layer.provide` does.
 
-**`Layer.scoped(Tag, scopedEffect)`** — `repos/effect/packages/effect/src/Layer.ts:727-735`
+**`Layer.scoped(Tag, scopedEffect)`** — `repos/effect/packages/effect/src/Layer.ts:721-735`
 
 When the service owns a resource that must be released (connections, file handles, background fibers), use `Layer.scoped`. The effect you supply should use `Effect.acquireRelease` (covered in Chapter 10 — Layer.scoped and Scope) to pair acquisition with a cleanup finalizer. The `Scope` from the scoped effect is absorbed by the Layer — the Layer manages the scope's lifetime. The `Exclude<R, Scope>` in the return type reflects this: callers do not see `Scope` in the Layer's `RIn`.
 
@@ -153,7 +153,7 @@ const DatabaseScoped = Layer.scoped(
 
 Chapter 10 covers `Layer.scoped` in depth alongside `Effect.acquireRelease` and `Scope`.
 
-**`Layer.fail(error)` / `Layer.die(defect)`** — `repos/effect/packages/effect/src/Layer.ts:338` / `:264`
+**`Layer.fail(error)` / `Layer.die(defect)`** — `repos/effect/packages/effect/src/Layer.ts:334-338` / `:258-264`
 
 These construct Layers that always fail or die during construction. They are useful in tests (to simulate a broken dependency) and as sentinel values in conditional layer wiring.
 
@@ -168,7 +168,7 @@ const BrokenDatabase = Layer.fail(new DbError({ reason: "connection refused" }))
 
 ### Part B — Layer composition
 
-**`Layer.merge(a, b)`** — `repos/effect/packages/effect/src/Layer.ts:567-575`
+**`Layer.merge(a, b)`** — `repos/effect/packages/effect/src/Layer.ts:562-575`
 
 Combines two independent Layers side-by-side, running their constructors concurrently. The resulting Layer provides both services:
 
@@ -192,7 +192,7 @@ const ServicesLive = Layer.merge(LoggerLive, CacheLive)
 // ServicesLive : Layer<Logger | Cache, never, never>
 ```
 
-`Layer.mergeAll` — `repos/effect/packages/effect/src/Layer.ts:583-589` — is the variadic form for combining three or more independent layers at once:
+`Layer.mergeAll` — `repos/effect/packages/effect/src/Layer.ts:578-589` — is the variadic form for combining three or more independent layers at once:
 
 ```ts
 import { Layer } from "effect"
@@ -205,7 +205,7 @@ const AllLayers = Layer.mergeAll(LayerA, LayerB, LayerC)
 // Layer<{ readonly a: string } | { readonly b: number } | { readonly c: boolean }, never, never>
 ```
 
-**`Layer.provide(layer, dependency)`** — `repos/effect/packages/effect/src/Layer.ts:899-926`
+**`Layer.provide(layer, dependency)`** — `repos/effect/packages/effect/src/Layer.ts:891-926`
 
 The fundamental wiring operation. Feeds the output of `dependency` into the input of `layer`. The result has `ROut = layer.ROut` and `RIn = (layer.RIn - dependency.ROut) | dependency.RIn` — in other words, the satisfied requirements disappear and the dependency's own requirements appear in their place:
 
@@ -234,7 +234,7 @@ const DatabaseWithConfig = DatabaseLive.pipe(Layer.provide(ConfigLive))
 // DatabaseWithConfig : Layer<Database, never, never>
 ```
 
-**`Layer.provideMerge(layer, dependency)`** — `repos/effect/packages/effect/src/Layer.ts:936-944`
+**`Layer.provideMerge(layer, dependency)`** — `repos/effect/packages/effect/src/Layer.ts:928-944`
 
 Like `Layer.provide`, but the dependency's output is *also* surfaced in the result's `ROut`. Both the dependency's services and the layer's services are available downstream. This is the pattern used for building up a cumulative context:
 
@@ -249,7 +249,7 @@ const AppLayers = DatabaseLive.pipe(Layer.provideMerge(ConfigLive))
 // Layer<{ port: number } | { query: ... }, never, never>
 ```
 
-**`Layer.fresh(layer)`** — `repos/effect/packages/effect/src/Layer.ts:397`
+**`Layer.fresh(layer)`** — `repos/effect/packages/effect/src/Layer.ts:393-397`
 
 By default, when a Layer appears multiple times in a dependency graph, Effect memoizes it — the Layer's constructor runs exactly once, and all dependents share the single instance. `Layer.fresh` opts a particular Layer out of this memoization, forcing a new instance to be built each time it is encountered in the graph.
 
@@ -272,7 +272,7 @@ Do not use `Layer.fresh` in production. Memoization exists for good reasons — 
 
 Two behavioral details matter.
 
-**Memoization within a single `Effect.provide` call.** If two services in the graph both require `Database`, and `Database` is the same Layer reference, that Layer runs exactly once. Both consumers get the same instance. From the `Layer.ts` module header (`repos/effect/packages/effect/src/Layer.ts:12-16`): "By default layers are shared, meaning that if the same layer is used twice the layer will only be allocated a single time."
+**Memoization within a single `Effect.provide` call.** If two services in the graph both require `Database`, and `Database` is the same Layer reference, that Layer runs exactly once. Both consumers get the same instance. From the `Layer.ts` module header (`repos/effect/packages/effect/src/Layer.ts:12-13`): "By default layers are shared, meaning that if the same layer is used twice the layer will only be allocated a single time."
 
 **Layers are lazy values.** Constructors run only when the Layer is provided to an Effect — not at declaration time. A `DatabaseLive` defined at module scope is safe to import without fear of connection leaks.
 
@@ -572,7 +572,7 @@ const AppLayer = Layer.merge(
 )
 ```
 
-The right move: rely on Effect's automatic Layer memoization. If `expensivePool` is the same Layer reference throughout the graph, it runs exactly once. Only reach for `Layer.fresh` when you explicitly need isolated instances — for example, per-test in-memory databases — and never in production code. From the `Layer.ts` module header (`repos/effect/packages/effect/src/Layer.ts:12-16`): "By default layers are shared, meaning that if the same layer is used twice the layer will only be allocated a single time."
+The right move: rely on Effect's automatic Layer memoization. If `expensivePool` is the same Layer reference throughout the graph, it runs exactly once. Only reach for `Layer.fresh` when you explicitly need isolated instances — for example, per-test in-memory databases — and never in production code. From the `Layer.ts` module header (`repos/effect/packages/effect/src/Layer.ts:12-13`): "By default layers are shared, meaning that if the same layer is used twice the layer will only be allocated a single time."
 
 ---
 
