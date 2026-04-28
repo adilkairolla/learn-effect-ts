@@ -114,7 +114,7 @@ class UserNotFound extends Data.TaggedError("UserNotFound")<{
 
 The resulting class is:
 - An `Error` subclass — it has a `.message`, `.stack`, and `.name` (set to the tag string). This means existing logging infrastructure that checks `instanceof Error` still works.
-- A `YieldableError` — it implements the iterator protocol, which means you can write `yield* new UserNotFound({ id })` directly inside `Effect.gen` as a shorthand for `yield* Effect.fail(new UserNotFound({ id }))`. This works because `YieldableError` extends `Effect.fail(...)` internally; the class instance itself is a valid `Effect<never, UserNotFound>`.
+- A `YieldableError` — it implements the iterator protocol, which means you can write `yield* new UserNotFound({ id })` directly inside `Effect.gen` as a shorthand for `yield* Effect.fail(new UserNotFound({ id }))`. This works because `YieldableError` implements the `EffectTypeId` variance struct and the iterator protocol — `class extends Data.TaggedError("UserNotFound")<{...}>` produces instances that satisfy `Effect<never, this, never>` and are valid for `yield*`. The runtime's `OP_ITERATOR` handler treats them as an immediate failure exit (see `repos/effect/packages/effect/src/internal/fiberRuntime.ts:192-211`).
 - Structurally discriminated — the `_tag` field is `readonly` and its type is the literal string type `"UserNotFound"`, not `string`. This allows TypeScript's discriminated union narrowing to work: inside a `catchTag` handler, the error parameter is narrowed to exactly that class.
 
 The class pattern is also how the platform package defines its own errors. `SocketServerError` in `repos/effect/packages/platform/src/SocketServer.ts:39` follows the same form: `class SocketServerError extends Data.TaggedError("SocketServerError")<{ readonly reason: "Open" | "Unknown"; readonly cause: unknown }> {}`.
@@ -212,7 +212,7 @@ The `catchTags` object form also works as a partial handler — you do not need 
 export const sandbox: <A, E, R>(self: Effect<A, E, R>) => Effect<A, Cause.Cause<E>, R>
 ```
 
-It promotes the error channel from `E` to `Cause<E>`. This makes the full cause available in the success channel for inspection — you can pattern-match on `Cause.isFailType`, `Cause.isDieType`, or `Cause.isInterruptType`. Chapter 07 covers the `Cause` model in full, including `Fail`, `Die`, and `Interrupt` variants. For now, the main point is that `sandbox` is the bridge between typed errors and the richer `Cause` universe. Use it at observability boundaries — for example, in a global error logger that needs to report both typed failures and unhandled defects.
+It promotes the error channel from `E` to `Cause<E>`. `sandbox` exposes the full `Cause<E>` value (with all the structural information about how the failure occurred) by promoting it from `E` to the error channel of `Effect<A, Cause<E>, R>`. Subsequent `catchAll`/`catchTag` operators see the `Cause<E>` value and can inspect its structure — you can pattern-match on `Cause.isFailType`, `Cause.isDieType`, or `Cause.isInterruptType`. Chapter 07 covers the `Cause` model in full, including `Fail`, `Die`, and `Interrupt` variants. For now, the main point is that `sandbox` is the bridge between typed errors and the richer `Cause` universe. Use it at observability boundaries — for example, in a global error logger that needs to report both typed failures and unhandled defects.
 
 ### Supporting operators
 
@@ -377,21 +377,22 @@ const handled = fetchUser("id").pipe(
 )
 ```
 
-**`Effect.sandbox` — surface the full `Cause` in the success channel** — use at observability boundaries to inspect or log the full failure including defects and interruptions. Chapter 07 explains `Cause` in detail.
+**`Effect.sandbox` — surface the full `Cause` in the error channel** — use at observability boundaries to inspect or log the full failure including defects and interruptions. Chapter 07 explains `Cause` in detail.
 
 ```ts
 import { Cause, Effect } from "effect"
 const withCause = fetchUser("id").pipe(
   Effect.sandbox,
-  Effect.catchAll((cause) => {
-    if (Cause.isDieType(cause)) Effect.logError("defect", cause)
-    return Effect.fail(cause)
-  }),
+  Effect.catchAll((cause) =>
+    Cause.isDieType(cause)
+      ? Effect.logError("defect", cause).pipe(Effect.zipRight(Effect.failCause(cause)))
+      : Effect.failCause(cause)
+  ),
   Effect.unsandbox
 )
 ```
 
-**`Data.taggedEnum` — multi-variant tagged enum** — a lightweight alternative for small, closed sets of variants where separate classes would be verbose. Chapter 18 covers `Data.TaggedEnum` in full.
+**`Data.taggedEnum` / `Data.TaggedEnum` — multi-variant tagged enum** — a lightweight alternative for small, closed sets of variants where separate classes would be verbose. `Data.taggedEnum` (the runtime constructor) / `Data.TaggedEnum` (the type alias) — Chapter 18 covers both in full.
 
 ```ts
 import { Data } from "effect"
