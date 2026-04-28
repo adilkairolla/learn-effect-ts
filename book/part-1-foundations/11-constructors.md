@@ -26,30 +26,27 @@ This chapter maps the full taxonomy: what each name means, what it signals about
 ## The minimal example
 
 ```ts
-import { Context, Effect, Layer, Logger, ManagedRuntime, Pool, Ref, Stream } from "effect"
+import { Chunk, Effect, Layer, Logger, ManagedRuntime, Stream } from "effect"
 
-// .make — build a new value (pure or effectful depending on the module)
-const ctx = Context.make(Ref, await Effect.runPromise(Ref.make(0)))
+// .make — the workhorse. Logger.make builds a custom Logger from a log function.
+const consoleLogger = Logger.make(({ message }) => globalThis.console.log(String(message)))
+// Logger<unknown, void> — pure value, no Effect wrapper
 
-// .make returning an Effect — resource creation deferred to runtime
-const makeRef = Ref.make(42)
-// Effect<Ref<number>, never, never>
+// .of — the rare pure-lift. Chunk.of(x) is the singleton-element Chunk.
+const single = Chunk.of(42)
+//   single : NonEmptyChunk<number>
 
-// .make accepting config — structured constructor
-const customLogger = Logger.make(({ logLevel, message }) =>
-  globalThis.console.log(`[${logLevel.label}] ${message}`)
-)
-
-// .from* — adapt an existing value into the target type
-const numbersStream = Stream.fromIterable([1, 2, 3])
+// .from* — the adapter family. Build a Stream by adapting a plain JS iterable.
+const stream = Stream.fromIterable([1, 2, 3])
 // Stream<number, never, never>
 
-// Layer constructors — .succeed, .effect, .scoped (not .make)
-class Cache extends Effect.Tag("app/Cache")<Cache, { get: (k: string) => Effect.Effect<string> }>() {}
-const CacheLive = Layer.succeed(Cache, { get: (k) => Effect.succeed(`value:${k}`) })
+// Layer constructors — .succeed, .effect, .scoped (Layer's equivalent of .make)
+class AppLogger extends Effect.Tag("app/Logger")<AppLogger, Logger.Logger<unknown, void>>() {}
+const LoggerLive = Layer.succeed(AppLogger, consoleLogger)
+// LoggerLive : Layer<AppLogger, never, never>
 
-// ManagedRuntime.make — long-lived runtime from a Layer
-const runtime = ManagedRuntime.make(CacheLive)
+// ManagedRuntime.make — long-lived runtime from a fully-composed Layer
+const runtime = ManagedRuntime.make(LoggerLive)
 await runtime.dispose()
 ```
 
@@ -67,7 +64,7 @@ What `.make` returns varies by module and reflects the resource semantics of the
 
 `Context.make(tag, service)` returns a `Context<I>` immediately — there is no effect because a `Context` is a plain immutable map. Source: `repos/effect/packages/effect/src/Context.ts:290`.
 
-`Logger.make(logFn)` returns a `Logger<Message, Output>` immediately — a logger is a pure function wrapper with no lifecycle. Source: `repos/effect/packages/effect/src/Logger.ts:107-110`.
+`Logger.make(logFn)` returns a `Logger<Message, Output>` immediately — a logger is a pure function wrapper with no lifecycle. Source: `repos/effect/packages/effect/src/Logger.ts:110`.
 
 `Stream.make(...values)` returns a `Stream<A>` immediately — the stream description is a pure value; execution is deferred. Source: `repos/effect/packages/effect/src/Stream.ts:2699-2700`.
 
@@ -81,17 +78,17 @@ What `.make` returns varies by module and reflects the resource semantics of the
 
 **Scoped (wrapped in `Effect<T, E, Scope>`):**
 
-`Pool.make({ acquire, size })` returns `Effect<Pool<A, E>, never, Scope>` — the pool owns resources and must be shut down when the surrounding scope closes. Source: `repos/effect/packages/effect/src/Pool.ts:112-122`.
+`Pool.make({ acquire, size })` returns `Effect<Pool<A, E>, never, Scope.Scope | R>` — the pool owns resources and must be shut down when the surrounding scope closes. The `R` parameter flows through from the `acquire` Effect — if `acquire` needs `Database`, the resulting Effect requires `Scope | Database`. Source: `repos/effect/packages/effect/src/Pool.ts:112-122`.
 
 The rule of thumb: if the thing you are constructing has a lifecycle (must be closed, finalized, or garbage-collected intentionally), `.make` returns an `Effect` that requires a `Scope`. If the thing is a pure description or a plain mutable cell managed by the fiber runtime, `.make` returns a plain `Effect`. If the thing is a pure value with no runtime involvement at all, `.make` returns the value directly.
 
-The prefix variant `.makeWith*` extends the primary constructor with extra options. `Pool.makeWithTTL` at `repos/effect/packages/effect/src/Pool.ts:158-181` takes a `min`/`max` size range and a time-to-live for eviction, in addition to the standard `acquire` option. `Effect.makeSemaphore(n)` at `repos/effect/packages/effect/src/Effect.ts:11852` returns `Effect<Semaphore>` — a named variant because `Effect` is a namespace of operators, not a type that has one "obvious" `.make`.
+The prefix variant `.makeWith*` extends the primary constructor with extra options. `Pool.makeWithTTL` at `repos/effect/packages/effect/src/Pool.ts:124-181` takes a `min`/`max` size range and a time-to-live for eviction, in addition to the standard `acquire` option. `Effect.makeSemaphore(n)` at `repos/effect/packages/effect/src/Effect.ts:11852` returns `Effect<Semaphore>` — a named variant because `Effect` is a namespace of operators, not a type that has one "obvious" `.make`.
 
 ### Part B — `.of`: single-element pure construction
 
 `.of` is narrower than `.make`. It appears when a module's type is a container and you want to lift a single pure value into it — with no effects, no config, no allocation.
 
-`Chunk.of(a)` at `repos/effect/packages/effect/src/Chunk.ts:242` wraps a single element into a `NonEmptyChunk<A>`. The `NonEmpty` in the return type is the key signal: `.of` guarantees at least one element, so the type system can reflect that.
+`Chunk.of(a)` at `repos/effect/packages/effect/src/Chunk.ts:242` wraps a single element into a `NonEmptyChunk<A>`. The `NonEmpty` in the return type is the key signal: `.of` guarantees at least one element, so the type system can reflect that. The same single-element constructor exists on several other collection-like types: `Array.of`, `Iterable.of`, `List.of`, `Take.of`, and `Request.of` all follow the same pattern.
 
 `.of` is deliberately rare in modern Effect. The team has converged on `.make` for most constructors and reserved `.of` for the typeclass-style "pure" lift familiar from functional programming (`Applicative.of`, `Monad.of`). If you are authoring a new module and you need a single-element constructor, prefer `.make` unless your type genuinely has the typeclass structure.
 
@@ -136,6 +133,8 @@ Modules that produce effect-bearing types expose a short vocabulary of leaf cons
 
 `Layer` uses a slightly different set: `Layer.succeed`, `Layer.effect`, and `Layer.scoped` are its three primary constructors, each carrying a scoped-resource sense rather than an error sense. `Layer.succeed(Tag, value)` at `repos/effect/packages/effect/src/Layer.ts:772-775` injects a pure value. `Layer.effect(Tag, effect)` at line `289-292` runs an effect during construction. `Layer.scoped(Tag, effect)` at line `727-735` runs a scoped effect and registers its finalizer with the outer `Scope`.
 
+**Schema's exception.** `Schema.Struct({...})`, `Schema.Class`, `Schema.transform`, and `Schema.brand` are constructor-shaped but called as plain functions, not through a `.make` member. Schema's API was designed before some of the more recent naming standardization, and the team has kept the existing names for ergonomic reasons. Treat Schema as a small irregular zone within the conventions — Chapters 14–15 cover its API surface in detail.
+
 ---
 
 ## A production example
@@ -144,14 +143,11 @@ This example builds a minimal application entry point that exercises all four co
 
 ```ts
 import {
-  Console,
-  Context,
   Effect,
   Layer,
   Logger,
   ManagedRuntime,
   Pool,
-  Ref,
   Stream
 } from "effect"
 
@@ -163,7 +159,7 @@ class AppDatabase extends Effect.Tag("app/Database")<
 >() {}
 
 // ── Custom logger via Logger.make ────────────────────────────────────────────
-// Logger.make: repos/effect/packages/effect/src/Logger.ts:107-110
+// Logger.make: repos/effect/packages/effect/src/Logger.ts:110
 // Returns Logger<Message, Output> directly — pure value, no Effect wrapper.
 
 const structuredLogger = Logger.make(({ logLevel, message, date }) =>
@@ -253,7 +249,7 @@ Every constructor family appears exactly once: `.make` in `Pool.make`, `.from*` 
 
 - **`.make` — effectful** — `Ref.make(value)` returns `Effect<Ref<A>>`. `Deferred.make()` returns `Effect<Deferred<A, E>>`. Source: `repos/effect/packages/effect/src/Ref.ts:69` and `repos/effect/packages/effect/src/Deferred.ts:88`.
 
-- **`.make` — scoped** — `Pool.make({ acquire, size })` returns `Effect<Pool<A, E>, never, Scope>`. `Scope.make()` returns `Effect<CloseableScope>`. Source: `repos/effect/packages/effect/src/Pool.ts:115` and `repos/effect/packages/effect/src/Scope.ts:202`.
+- **`.make` — scoped** — `Pool.make({ acquire, size })` returns `Effect<Pool<A, E>, never, Scope.Scope | R>`. `Scope.make()` returns `Effect<CloseableScope>`. Source: `repos/effect/packages/effect/src/Pool.ts:115` and `repos/effect/packages/effect/src/Scope.ts:202`.
 
 - **`.makeWith*` — extended constructors** — `Pool.makeWithTTL({ acquire, min, max, timeToLive })` at `repos/effect/packages/effect/src/Pool.ts:171` adds eviction semantics to `Pool.make`. `Effect.makeSemaphore(n)` at `repos/effect/packages/effect/src/Effect.ts:11852` follows the same prefix pattern for a semantically distinct constructor.
 
