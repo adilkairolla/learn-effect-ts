@@ -110,6 +110,10 @@ The `release` function receives an `Exit` value, so it can take different cleanu
 
 ```ts
 export const acquireUseRelease: {
+  <A2, E2, R2, A, X, R3>(
+    use: (a: A) => Effect<A2, E2, R2>,
+    release: (a: A, exit: Exit.Exit<A2, E2>) => Effect<X, never, R3>
+  ): <E, R>(acquire: Effect<A, E, R>) => Effect<A2, E2 | E, R2 | R3 | R>
   <A, E, R, A2, E2, R2, X, R3>(
     acquire: Effect<A, E, R>,
     use: (a: A) => Effect<A2, E2, R2>,
@@ -232,7 +236,11 @@ When you use `Layer.effect` for a service that owns a resource, the resource is 
 
 ## A production example
 
-The following is a simplified but faithful rendering of how `@effect/sql-pg` builds its `PgClient` layer. The real implementation at `repos/effect/packages/sql-pg/src/PgClient.ts:395-469` uses `Effect.acquireRelease` to open a `pg.Pool` and guarantee `pool.end()` on scope close; `repos/effect/packages/sql-pg/src/PgClient.ts:575-583` wraps the scoped Effect in `Layer.scopedContext` (a variant of `Layer.scoped` that registers multiple Tags at once). The example below distills that pattern into standalone, readable form:
+The following is a simplified but faithful rendering of how `@effect/sql-pg` builds its `PgClient` layer. Inside the `make` function at `repos/effect/packages/sql-pg/src/PgClient.ts:395-469`, `Effect.acquireRelease` (line 430) wraps `pg.Pool` creation with a release that calls `pool.end()`. The same package's `makeClient` helper at `repos/effect/packages/sql-pg/src/PgClient.ts:317` uses `RcRef.make` for reference-counted listen connections (a different pattern — covered in Chapter 36).
+
+`repos/effect/packages/sql-pg/src/PgClient.ts:575-583` uses `Layer.scopedContext` rather than `Layer.scoped` — the difference: `scopedContext` lets you register multiple Tags from one scoped Effect (PgClient registers both the Postgres-specific tag and the generic `SqlClient` tag in one go). For most resource layers you'll write, `Layer.scoped` is the right choice; reach for `scopedContext` only when one Effect provides multiple services.
+
+The example below distills that pattern into standalone, readable form:
 
 ```ts
 import { Context, Effect, Layer, Scope } from "effect"
@@ -352,6 +360,9 @@ const SvcLive = Layer.scoped(
 // Layer<Svc, never, never>
 
 // 6. Scope.make / Scope.close — manual scope, for framework integration.
+// Note: Scope.extend(effect, scope) provides the given scope to a scoped Effect
+// without closing the scope afterward — useful when the caller wants to manage
+// the lifetime themselves rather than letting Effect.scoped close it.
 const manualScope = Effect.gen(function* () {
   const scope = yield* Scope.make()
   yield* Scope.extend(conn, scope)     // register conn's release on this scope
