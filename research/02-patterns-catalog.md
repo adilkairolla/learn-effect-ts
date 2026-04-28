@@ -56,10 +56,10 @@ export const of = <A>(a: A): NonEmptyChunk<A>
 ```
 
 **Where it appears:**
-- `repos/effect/packages/effect/src/Context.ts:290` — `Context.make` creates a single-service context from a tag and value
-- `repos/effect/packages/effect/src/Ref.ts:69` — `Ref.make` builds an atomic mutable cell returning an Effect
-- `repos/effect/packages/effect/src/Deferred.ts:88` — `Deferred.make` creates a one-shot async value
-- `repos/effect/packages/effect/src/Chunk.ts:242` — `Chunk.of` wraps a single element into a NonEmptyChunk
+- `repos/effect/packages/effect/src/Context.ts:290-290` — `Context.make` creates a single-service context from a tag and value
+- `repos/effect/packages/effect/src/Ref.ts:69-69` — `Ref.make` builds an atomic mutable cell returning an Effect
+- `repos/effect/packages/effect/src/Deferred.ts:88-88` — `Deferred.make` creates a one-shot async value
+- `repos/effect/packages/effect/src/Chunk.ts:242-242` — `Chunk.of` wraps a single element into a NonEmptyChunk
 
 ### `.from*` family
 
@@ -80,9 +80,9 @@ export const fromEffect: <A, E, R>(effect: Effect.Effect<A, E, R>) => Stream<A, 
 
 **Where it appears:**
 - `repos/effect/packages/effect/src/Chunk.ts:250-251` — convert any `Iterable<A>` to a typed `Chunk<A>`
-- `repos/effect/packages/effect/src/HashMap.ts:129` — build a `HashMap` from key-value iterable entries
+- `repos/effect/packages/effect/src/HashMap.ts:129-129` — build a `HashMap` from key-value iterable entries
 - `repos/effect/packages/effect/src/Stream.ts:2086-2087` — lift an iterable into a pure stream
-- `repos/effect/packages/effect/src/Stream.ts:2019` — lift a single Effect value into a one-element stream
+- `repos/effect/packages/effect/src/Stream.ts:2019-2019` — lift a single Effect value into a one-element stream
 
 ## Effects
 
@@ -102,7 +102,7 @@ export const gen: {
 ```
 
 **Where it appears:**
-- `repos/effect/packages/effect/src/Effect.ts:2760-2790` — generator-based sequential composition; `yield*` unwraps each `Effect` value
+- `repos/effect/packages/effect/src/Effect.ts:2760-2776` — generator-based sequential composition; `yield*` unwraps each `Effect` value
 
 ### `Effect.fn` (named effect functions with auto-tracing)
 
@@ -134,11 +134,11 @@ export const tryPromise: {
 ```
 
 **Where it appears:**
-- `repos/effect/packages/effect/src/Effect.ts:3160` — `succeed` lifts a pure value into Effect
-- `repos/effect/packages/effect/src/Effect.ts:2575` — `fail` creates a failed Effect with typed error
-- `repos/effect/packages/effect/src/Effect.ts:3326` — `sync` defers a synchronous computation
-- `repos/effect/packages/effect/src/Effect.ts:3131` — `promise` wraps a Promise (no error channel)
-- `repos/effect/packages/effect/src/Effect.ts:4677` — `tryPromise` wraps a Promise with error mapping
+- `repos/effect/packages/effect/src/Effect.ts:3160-3160` — `succeed` lifts a pure value into Effect
+- `repos/effect/packages/effect/src/Effect.ts:2575-2575` — `fail` creates a failed Effect with typed error
+- `repos/effect/packages/effect/src/Effect.ts:3326-3326` — `sync` defers a synchronous computation
+- `repos/effect/packages/effect/src/Effect.ts:3131-3133` — `promise` wraps a Promise (no error channel)
+- `repos/effect/packages/effect/src/Effect.ts:4677-4685` — `tryPromise` wraps a Promise with error mapping
 
 ### `Effect.runPromise` / `runSync` / `runFork`
 
@@ -159,7 +159,7 @@ export const runFork: <A, E>(
 
 **Where it appears:**
 - `repos/effect/packages/effect/src/Effect.ts:12136-12139` — `runPromise` executes an Effect as a `Promise`
-- `repos/effect/packages/effect/src/Effect.ts:12279` — `runSync` executes an Effect synchronously (throws on async/failure)
+- `repos/effect/packages/effect/src/Effect.ts:12279-12279` — `runSync` executes an Effect synchronously (throws on async/failure)
 - `repos/effect/packages/effect/src/Effect.ts:12064-12067` — `runFork` starts an Effect as a detached fiber
 
 ### `Effect.all` / `Effect.repeat` / `Effect.retry` — combinators
@@ -183,9 +183,9 @@ export const repeat: {
 ```
 
 **Where it appears:**
-- `repos/effect/packages/effect/src/Effect.ts:825` — `all` runs many Effects, optionally in parallel
-- `repos/effect/packages/effect/src/Effect.ts:4400` — `retry` retries a failing Effect with a `Schedule`
-- `repos/effect/packages/effect/src/Effect.ts:10178` — `repeat` repeats a successful Effect with a `Schedule`
+- `repos/effect/packages/effect/src/Effect.ts:825-834` — `all` runs many Effects, optionally in parallel
+- `repos/effect/packages/effect/src/Effect.ts:4400-4410` — `retry` retries a failing Effect with a `Schedule`
+- `repos/effect/packages/effect/src/Effect.ts:10178-10192` — `repeat` repeats a successful Effect with a `Schedule`
 
 ## Layers & Context
 
@@ -266,7 +266,7 @@ export const Service: <Self = never>() => [Self] extends [never] ? MissingSelfGe
 ```
 
 **Where it appears:**
-- `repos/effect/packages/effect/src/Effect.ts:13585` — `Effect.Service` generates a tag + layer class from a plain object definition
+- `repos/effect/packages/effect/src/Effect.ts:13585-13630` — `Effect.Service` generates a tag + layer class from a plain object definition
 
 ### `ManagedRuntime.make`
 
@@ -296,7 +296,7 @@ export const defaultRuntime: Runtime<never>
 
 **Where it appears:**
 - `repos/effect/packages/effect/src/Runtime.ts:40-57` — `Runtime` interface definition
-- `repos/effect/packages/effect/src/Runtime.ts:205` — `defaultRuntime` is the standard runtime with no requirements
+- `repos/effect/packages/effect/src/Runtime.ts:205-205` — `defaultRuntime` is the standard runtime with no requirements
 
 ### RuntimeFlags — concurrency, tracing, interruption controls
 
@@ -309,9 +309,9 @@ export const none: RuntimeFlags
 ```
 
 **Where it appears:**
-- `repos/effect/packages/effect/src/RuntimeFlags.ts:19` — `RuntimeFlags` is a bitset controlling runtime features
-- `repos/effect/packages/effect/src/RuntimeFlags.ts:275` — `make` builds a flags bitset from individual `RuntimeFlag` values
-- `repos/effect/packages/effect/src/RuntimeFlags.ts:281` — `none` is an empty flags value
+- `repos/effect/packages/effect/src/RuntimeFlags.ts:19-21` — `RuntimeFlags` is a bitset controlling runtime features
+- `repos/effect/packages/effect/src/RuntimeFlags.ts:275-275` — `make` builds a flags bitset from individual `RuntimeFlag` values
+- `repos/effect/packages/effect/src/RuntimeFlags.ts:281-281` — `none` is an empty flags value
 
 ### LayerMap — keyed map of layers (per-tenant / per-request)
 
@@ -347,7 +347,7 @@ export const manual: <I, S, In, E>(
 
 **Where it appears:**
 - `repos/effect/packages/effect/src/Reloadable.ts:65-68` — `Reloadable.auto` schedules periodic layer reloads
-- `repos/effect/packages/effect/src/Reloadable.ts:101` — `Reloadable.manual` allows on-demand reload via `Reloadable.reload`
+- `repos/effect/packages/effect/src/Reloadable.ts:101-104` — `Reloadable.manual` allows on-demand reload via `Reloadable.reload`
 
 ## Errors & Cause
 
@@ -375,11 +375,11 @@ export const sequential: <E, E2>(left: Cause<E>, right: Cause<E2>) => Cause<E | 
 ```
 
 **Where it appears:**
-- `repos/effect/packages/effect/src/Cause.ts:591` — `fail` wraps a typed error into a Cause
-- `repos/effect/packages/effect/src/Cause.ts:607` — `die` represents an unexpected defect (no error type)
-- `repos/effect/packages/effect/src/Cause.ts:623` — `interrupt` represents fiber interruption
-- `repos/effect/packages/effect/src/Cause.ts:639` — `parallel` composes two simultaneous causes
-- `repos/effect/packages/effect/src/Cause.ts:655` — `sequential` composes two sequential causes
+- `repos/effect/packages/effect/src/Cause.ts:591-591` — `fail` wraps a typed error into a Cause
+- `repos/effect/packages/effect/src/Cause.ts:607-607` — `die` represents an unexpected defect (no error type)
+- `repos/effect/packages/effect/src/Cause.ts:623-623` — `interrupt` represents fiber interruption
+- `repos/effect/packages/effect/src/Cause.ts:639-639` — `parallel` composes two simultaneous causes
+- `repos/effect/packages/effect/src/Cause.ts:655-655` — `sequential` composes two sequential causes
 
 ### `Effect.catchTag` / `catchTags` / `sandbox` — error handling
 
@@ -397,8 +397,8 @@ export const sandbox: <A, E, R>(self: Effect<A, E, R>) => Effect<A, Cause.Cause<
 
 **Where it appears:**
 - `repos/effect/packages/effect/src/Effect.ts:3882-3885` — `catchTag` handles one or more tagged error variants, narrowing the error channel
-- `repos/effect/packages/effect/src/Effect.ts:3948` — `catchTags` handles multiple variants via a case record
-- `repos/effect/packages/effect/src/Effect.ts:4246` — `sandbox` exposes the full `Cause` for inspection
+- `repos/effect/packages/effect/src/Effect.ts:3948-3996` — `catchTags` handles multiple variants via a case record
+- `repos/effect/packages/effect/src/Effect.ts:4246-4246` — `sandbox` exposes the full `Cause` for inspection
 
 ### Exit — Effect outcome value (Success / Failure of Cause)
 
@@ -410,8 +410,8 @@ export const die: (defect: unknown) => Exit<never, never>
 ```
 
 **Where it appears:**
-- `repos/effect/packages/effect/src/Exit.ts:359` — `Exit.succeed` wraps a successful value
-- `repos/effect/packages/effect/src/Cause.ts:591` — `Cause.fail` (used inside `Exit.fail`) wraps a typed failure
+- `repos/effect/packages/effect/src/Exit.ts:359-359` — `Exit.succeed` wraps a successful value
+- `repos/effect/packages/effect/src/Cause.ts:591-591` — `Cause.fail` (used inside `Exit.fail`) wraps a typed failure
 
 ## Option & Either
 
@@ -428,12 +428,12 @@ export const getOrElse: { <A, B>(onNone: LazyArg<B>): (self: Option<A>) => A | B
 ```
 
 **Where it appears:**
-- `repos/effect/packages/effect/src/Option.ts:187` — `some` wraps a value
-- `repos/effect/packages/effect/src/Option.ts:162` — `none` represents absence
-- `repos/effect/packages/effect/src/Option.ts:684` — `fromNullable` converts a nullable value
-- `repos/effect/packages/effect/src/Option.ts:923` — `map` transforms the wrapped value
-- `repos/effect/packages/effect/src/Option.ts:1047` — `flatMap` chains Option-returning functions
-- `repos/effect/packages/effect/src/Option.ts:500` — `getOrElse` extracts with a fallback
+- `repos/effect/packages/effect/src/Option.ts:187-187` — `some` wraps a value
+- `repos/effect/packages/effect/src/Option.ts:162-162` — `none` represents absence
+- `repos/effect/packages/effect/src/Option.ts:684-686` — `fromNullable` converts a nullable value
+- `repos/effect/packages/effect/src/Option.ts:923-930` — `map` transforms the wrapped value
+- `repos/effect/packages/effect/src/Option.ts:1047-1054` — `flatMap` chains Option-returning functions
+- `repos/effect/packages/effect/src/Option.ts:500-505` — `getOrElse` extracts with a fallback
 
 ### Either — Left / Right and combinators
 
@@ -447,30 +447,36 @@ export const all: <const I extends Iterable<Either<any, any>> | Record<string, E
 ```
 
 **Where it appears:**
-- `repos/effect/packages/effect/src/Either.ts:120` — `right` represents a success value
-- `repos/effect/packages/effect/src/Either.ts:138` — `left` represents an error value
-- `repos/effect/packages/effect/src/Either.ts:365` — `map` transforms the right value
-- `repos/effect/packages/effect/src/Either.ts:647` — `flatMap` chains Either-returning functions
-- `repos/effect/packages/effect/src/Either.ts:734` — `all` sequences multiple Eithers
+- `repos/effect/packages/effect/src/Either.ts:120-120` — `right` represents a success value
+- `repos/effect/packages/effect/src/Either.ts:138-138` — `left` represents an error value
+- `repos/effect/packages/effect/src/Either.ts:365-372` — `map` transforms the right value
+- `repos/effect/packages/effect/src/Either.ts:647-654` — `flatMap` chains Either-returning functions
+- `repos/effect/packages/effect/src/Either.ts:734-745` — `all` sequences multiple Eithers
 
-### Bridging Option/Either ↔ Effect (fromOption, fromEither, getOrFail)
+### Bridging Option/Either ↔ Effect (yield*, option, either)
+
+> **Editorial note:** The functions `Effect.fromOption`, `Effect.fromEither`, and `Effect.getOrFail` do not exist as named exports in Effect. The idiomatic way to lift an `Option` or `Either` into an `Effect` is to `yield*` them directly inside `Effect.gen` — `Option` and `Either` both implement the `EffectPrototype` (they are yieldable). A `None` causes the generator to fail with `Cause.NoSuchElementException`; a `Left(e)` fails with `e`. The functions documented below work in the **other direction**: wrapping an `Effect`'s outcome into an `Option`/`Either`.
 
 **Signature:**
 ```ts
-// Wrap an Effect's result into Option/Either
+// Lift Option/Either into Effect by yielding them directly in Effect.gen:
+// const value = yield* someOption  // fails with NoSuchElementException if None
+// const value = yield* someEither  // fails with the Left value if Left
+
+// Wrap an Effect's result into Option/Either (inverse direction):
 export const option: <A, E, R>(self: Effect<A, E, R>) => Effect<Option.Option<A>, never, R>
 export const either: <A, E, R>(self: Effect<A, E, R>) => Effect<Either.Either<A, E>, never, R>
 
-// Exit conversions
+// Exit conversions (Exit, not Effect):
 export const fromEither: <R, L>(either: Either.Either<R, L>) => Exit<R, L>
 export const fromOption: <A>(option: Option.Option<A>) => Exit<A, void>
 ```
 
 **Where it appears:**
-- `repos/effect/packages/effect/src/Effect.ts:8109` — `Effect.option` turns a failing Effect into `Effect<Option<A>, never, R>`
-- `repos/effect/packages/effect/src/Effect.ts:8180` — `Effect.either` captures errors as `Either<A, E>` removing the error channel
-- `repos/effect/packages/effect/src/Exit.ts:234` — `Exit.fromEither` converts an `Either` into an `Exit` value
-- `repos/effect/packages/effect/src/Exit.ts:242` — `Exit.fromOption` converts an `Option` into an `Exit` value
+- `repos/effect/packages/effect/src/Effect.ts:8109-8109` — `Effect.option` turns a failing Effect into `Effect<Option<A>, never, R>`
+- `repos/effect/packages/effect/src/Effect.ts:8180-8180` — `Effect.either` captures errors as `Either<A, E>` removing the error channel
+- `repos/effect/packages/effect/src/Exit.ts:234-234` — `Exit.fromEither` converts an `Either` into an `Exit` value
+- `repos/effect/packages/effect/src/Exit.ts:242-242` — `Exit.fromOption` converts an `Option` into an `Exit` value
 
 ## Schema
 
@@ -532,6 +538,7 @@ export function filter<S extends Schema.Any>(
 **Where it appears:**
 - `repos/effect/packages/effect/src/Schema.ts:3197-3200` — `brand` attaches a nominal brand to a schema type
 - `repos/effect/packages/effect/src/Schema.ts:3695-3711` — `filter` adds a predicate-based refinement to a schema
+- `repos/effect/packages/cluster/src/EntityId.ts:10-10` — `Schema.brand` used to mark a `string` as a typed `EntityId` (usage example: `Schema.NonEmptyTrimmedString.pipe(Schema.brand("EntityId"))`)
 
 ### `Schema.transform` / `transformOrFail`
 
@@ -587,7 +594,7 @@ export const decodeUnknown: <A, I, R>(
 **Where it appears:**
 - `repos/effect/packages/effect/src/Schema.ts:534-537` — `encode` converts typed value → encoded form as an Effect
 - `repos/effect/packages/effect/src/Schema.ts:599-607` — `decode` converts encoded form → typed value as an Effect
-- `repos/effect/packages/effect/src/Schema.ts:561` — `decodeUnknown` accepts `unknown` input, useful at API boundaries
+- `repos/effect/packages/effect/src/Schema.ts:561-565` — `decodeUnknown` accepts `unknown` input, useful at API boundaries
 
 ## Streams & Concurrency
 
@@ -601,9 +608,9 @@ export const fromEffect: <A, E, R>(effect: Effect.Effect<A, E, R>) => Stream<A, 
 ```
 
 **Where it appears:**
-- `repos/effect/packages/effect/src/Stream.ts:2700` — `make` creates a finite stream from varargs
+- `repos/effect/packages/effect/src/Stream.ts:2700-2700` — `make` creates a finite stream from varargs
 - `repos/effect/packages/effect/src/Stream.ts:2086-2087` — `fromIterable` creates a pure stream from any iterable
-- `repos/effect/packages/effect/src/Stream.ts:2019` — `fromEffect` emits a single value produced by an Effect
+- `repos/effect/packages/effect/src/Stream.ts:2019-2019` — `fromEffect` emits a single value produced by an Effect
 
 ### `Stream.async*` family (`asyncPush`, `fromAsyncIterable`)
 
@@ -635,7 +642,7 @@ export const paginate: <S, A>(
 ```
 
 **Where it appears:**
-- `repos/effect/packages/effect/src/Stream.ts:3380` — unfolds a paginated data source; returns `[element, Some(nextCursor)]` or `[element, None]` to terminate
+- `repos/effect/packages/effect/src/Stream.ts:3380-3380` — unfolds a paginated data source; returns `[element, Some(nextCursor)]` or `[element, None]` to terminate
 
 ### `Stream.fromPubSub` / `fromQueue` / `fromSchedule` / `groupBy`
 
@@ -694,9 +701,9 @@ export const all: <A, E>(fibers: Iterable<Fiber<A, E>>) => Fiber<ReadonlyArray<A
 ```
 
 **Where it appears:**
-- `repos/effect/packages/effect/src/Fiber.ts:527` — `join` awaits a fiber's completion and extracts its value
-- `repos/effect/packages/effect/src/Fiber.ts:451` — `interrupt` sends an interruption signal and waits for exit
-- `repos/effect/packages/effect/src/Fiber.ts:378` — `all` creates a composite fiber that joins all fibers in a collection
+- `repos/effect/packages/effect/src/Fiber.ts:527-527` — `join` awaits a fiber's completion and extracts its value
+- `repos/effect/packages/effect/src/Fiber.ts:451-451` — `interrupt` sends an interruption signal and waits for exit
+- `repos/effect/packages/effect/src/Fiber.ts:378-378` — `all` creates a composite fiber that joins all fibers in a collection
 
 ### FiberId — fiber identity and lineage
 
@@ -708,9 +715,9 @@ export const composite: (left: FiberId, right: FiberId) => Composite
 ```
 
 **Where it appears:**
-- `repos/effect/packages/effect/src/FiberId.ts:162` — `make` creates a runtime fiber ID with a timestamp
-- `repos/effect/packages/effect/src/FiberId.ts:71` — `none` is the empty/sentinel fiber ID
-- `repos/effect/packages/effect/src/FiberId.ts:83` — `composite` merges two fiber IDs (for parallel forks)
+- `repos/effect/packages/effect/src/FiberId.ts:162-162` — `make` creates a runtime fiber ID with a timestamp
+- `repos/effect/packages/effect/src/FiberId.ts:71-71` — `none` is the empty/sentinel fiber ID
+- `repos/effect/packages/effect/src/FiberId.ts:83-83` — `composite` merges two fiber IDs (for parallel forks)
 
 ### Supervisor — observe and react to fiber lifecycle
 
@@ -728,8 +735,8 @@ export const fromEffect: <A>(effect: Effect.Effect<A>) => Supervisor<A>
 
 **Where it appears:**
 - `repos/effect/packages/effect/src/Supervisor.ts:36-58` — `Supervisor` interface definition with lifecycle hooks
-- `repos/effect/packages/effect/src/Supervisor.ts:141` — `track` creates a supervisor that collects all live fibers
-- `repos/effect/packages/effect/src/Supervisor.ts:125` — `fromEffect` builds a supervisor from a polling Effect
+- `repos/effect/packages/effect/src/Supervisor.ts:141-141` — `track` creates a supervisor that collects all live fibers
+- `repos/effect/packages/effect/src/Supervisor.ts:125-125` — `fromEffect` builds a supervisor from a polling Effect
 
 ### Structured concurrency via `Scope`
 
@@ -743,7 +750,7 @@ export const close: (self: CloseableScope, exit: Exit.Exit<unknown, unknown>) =>
 **Where it appears:**
 - `repos/effect/packages/effect/src/Scope.ts:202-204` — `Scope.make` creates a closeable scope for resource management
 - `repos/effect/packages/effect/src/Scope.ts:175-177` — `Scope.fork` creates a child scope
-- `repos/effect/packages/effect/src/Scope.ts:152` — `Scope.close` finalizes all resources registered with the scope
+- `repos/effect/packages/effect/src/Scope.ts:152-152` — `Scope.close` finalizes all resources registered with the scope
 
 ### Channel — bidirectional stream primitive (Stream's underlying type)
 
@@ -766,9 +773,9 @@ export const identity: <Elem, Err, Done>() => Channel<Elem, Elem, Err, Err, Done
 
 **Where it appears:**
 - `repos/effect/packages/effect/src/Channel.ts:75-85` — `Channel` interface definition (bidirectional typed pipe)
-- `repos/effect/packages/effect/src/Channel.ts:2015` — `succeed` creates a channel that completes immediately with a value
+- `repos/effect/packages/effect/src/Channel.ts:2015-2015` — `succeed` creates a channel that completes immediately with a value
 - `repos/effect/packages/effect/src/Channel.ts:1084-1086` — `fromEffect` lifts an Effect into a Channel
-- `repos/effect/packages/effect/src/Channel.ts:1151` — `identity` passes all inputs through unchanged
+- `repos/effect/packages/effect/src/Channel.ts:1151-1151` — `identity` passes all inputs through unchanged
 
 ### Sink — Stream consumer / aggregator
 
@@ -782,9 +789,9 @@ export const fromEffect: <A, E, R>(effect: Effect.Effect<A, E, R>) => Sink<A, un
 ```
 
 **Where it appears:**
-- `repos/effect/packages/effect/src/Sink.ts:48` — `Sink` interface definition
-- `repos/effect/packages/effect/src/Sink.ts:442` — `drain` consumes all elements and discards them
-- `repos/effect/packages/effect/src/Sink.ts:651` — `fold` accumulates stream elements into a summary value
+- `repos/effect/packages/effect/src/Sink.ts:48-50` — `Sink` interface definition
+- `repos/effect/packages/effect/src/Sink.ts:442-442` — `drain` consumes all elements and discards them
+- `repos/effect/packages/effect/src/Sink.ts:651-651` — `fold` accumulates stream elements into a summary value
 - `repos/effect/packages/effect/src/Sink.ts:992-993` — `fromEffect` creates a sink from a constant Effect result
 
 ## Resources & Scope
@@ -838,7 +845,7 @@ export const close: (self: CloseableScope, exit: Exit.Exit<unknown, unknown>) =>
 **Where it appears:**
 - `repos/effect/packages/effect/src/Scope.ts:202-204` — `make` creates a top-level scope
 - `repos/effect/packages/effect/src/Scope.ts:175-177` — `fork` creates a child scope that will be closed when the parent closes
-- `repos/effect/packages/effect/src/Scope.ts:152` — `close` runs all registered finalizers
+- `repos/effect/packages/effect/src/Scope.ts:152-152` — `close` runs all registered finalizers
 
 ### `RcRef` and `RcMap` — reference-counted resources
 
@@ -966,9 +973,9 @@ export const TaggedClass = <Tag extends string>(tag: Tag): new<A extends Record<
 ```
 
 **Where it appears:**
-- `repos/effect/packages/effect/src/Data.ts:47` — `struct` creates a structurally equatable plain object
-- `repos/effect/packages/effect/src/Data.ts:76` — `tuple` creates a structurally equatable tuple
-- `repos/effect/packages/effect/src/Data.ts:104` — `array` creates a structurally equatable array
+- `repos/effect/packages/effect/src/Data.ts:47-47` — `struct` creates a structurally equatable plain object
+- `repos/effect/packages/effect/src/Data.ts:76-76` — `tuple` creates a structurally equatable tuple
+- `repos/effect/packages/effect/src/Data.ts:104-104` — `array` creates a structurally equatable array
 - `repos/effect/packages/effect/src/Data.ts:203-205` — `Class` makes an equatable class with readonly fields
 - `repos/effect/packages/effect/src/Data.ts:232-235` — `TaggedClass` adds a `_tag` discriminant to `Class`
 
@@ -1049,8 +1056,8 @@ export const fork: <A, E, R>(self: Effect<A, E, R>) => Effect<Fiber.RuntimeFiber
 ```
 
 **Where it appears:**
-- `repos/effect/packages/effect/src/index.ts:687` — `LayerMap` re-export shows the namespaced `export * as` convention
-- `repos/effect/packages/effect/src/Effect.ts:6283` — public API delegates to `internal/` implementation
+- `repos/effect/packages/effect/src/index.ts:687-687` — `LayerMap` re-export shows the namespaced `export * as` convention
+- `repos/effect/packages/effect/src/Effect.ts:6283-6283` — public API delegates to `internal/` implementation
 
 ### Dual ESM/CJS export pattern
 
@@ -1085,7 +1092,7 @@ export const succeed: <A>(value: A) => Effect<A>
 ```
 
 **Where it appears:**
-- `repos/effect/packages/effect/src/Effect.ts:2` — `@since 2.0.0` file-level tag
+- `repos/effect/packages/effect/src/Effect.ts:2-3` — `@since 2.0.0` file-level tag
 - `repos/effect/packages/effect/src/Effect.ts:78-80` — `@category` grouping and `@since` on individual exports
 
 ## Concurrency primitives
@@ -1098,7 +1105,7 @@ export const make: <A>(value: A) => Effect.Effect<Ref<A>>
 ```
 
 **Where it appears:**
-- `repos/effect/packages/effect/src/Ref.ts:69` — `Ref.make` creates an atomically-updatable mutable cell inside an Effect
+- `repos/effect/packages/effect/src/Ref.ts:69-69` — `Ref.make` creates an atomically-updatable mutable cell inside an Effect
 
 ### `SubscriptionRef` — observable Ref
 
@@ -1108,7 +1115,7 @@ export const make: <A>(value: A) => Effect.Effect<SubscriptionRef<A>>
 ```
 
 **Where it appears:**
-- `repos/effect/packages/effect/src/SubscriptionRef.ts:148` — `SubscriptionRef.make` creates a `Ref` that also emits a `Stream` of changes on each update
+- `repos/effect/packages/effect/src/SubscriptionRef.ts:148-148` — `SubscriptionRef.make` creates a `Ref` that also emits a `Stream` of changes on each update
 
 ### `Queue` — unbounded / bounded / sliding / dropping
 
@@ -1121,10 +1128,10 @@ export const dropping: <A>(requestedCapacity: number) => Effect.Effect<Queue<A>>
 ```
 
 **Where it appears:**
-- `repos/effect/packages/effect/src/Queue.ts:473` — `unbounded` creates a queue with no capacity limit
-- `repos/effect/packages/effect/src/Queue.ts:435` — `bounded` suspends producers when full
-- `repos/effect/packages/effect/src/Queue.ts:465` — `sliding` drops oldest elements when full
-- `repos/effect/packages/effect/src/Queue.ts:450` — `dropping` drops new elements when full
+- `repos/effect/packages/effect/src/Queue.ts:473-473` — `unbounded` creates a queue with no capacity limit
+- `repos/effect/packages/effect/src/Queue.ts:435-435` — `bounded` suspends producers when full
+- `repos/effect/packages/effect/src/Queue.ts:465-465` — `sliding` drops oldest elements when full
+- `repos/effect/packages/effect/src/Queue.ts:450-450` — `dropping` drops new elements when full
 
 ### `PubSub` — multi-subscriber broadcast
 
@@ -1172,7 +1179,7 @@ export const makeSemaphore: (permits: number) => Effect<Semaphore>
 
 **Where it appears:**
 - `repos/effect/packages/effect/src/Effect.ts:11772-11824` — `Semaphore` interface with `withPermits` for bracketed usage
-- `repos/effect/packages/effect/src/Effect.ts:11852` — `makeSemaphore` creates the semaphore Effect
+- `repos/effect/packages/effect/src/Effect.ts:11852-11852` — `makeSemaphore` creates the semaphore Effect
 
 ### `Deferred` — one-shot async value
 
@@ -1182,7 +1189,7 @@ export const make: <A, E = never>() => Effect.Effect<Deferred<A, E>>
 ```
 
 **Where it appears:**
-- `repos/effect/packages/effect/src/Deferred.ts:88` — `Deferred.make` creates a one-shot promise-like that can be completed from another fiber
+- `repos/effect/packages/effect/src/Deferred.ts:88-88` — `Deferred.make` creates a one-shot promise-like that can be completed from another fiber
 
 ### `Mailbox` — ordered message inbox
 
@@ -1226,7 +1233,7 @@ export const make: <A>(value: A) => Effect.Effect<SynchronizedRef<A>>
 ```
 
 **Where it appears:**
-- `repos/effect/packages/effect/src/SynchronizedRef.ts:71` — `SynchronizedRef.make` creates a Ref whose `modifyEffect` operations are serialized (atomic effectful updates)
+- `repos/effect/packages/effect/src/SynchronizedRef.ts:71-71` — `SynchronizedRef.make` creates a Ref whose `modifyEffect` operations are serialized (atomic effectful updates)
 
 ### RateLimiter — token-bucket rate limiting
 
@@ -1236,7 +1243,7 @@ export const make: (options: RateLimiter.Options) => Effect<RateLimiter, never, 
 ```
 
 **Where it appears:**
-- `repos/effect/packages/effect/src/RateLimiter.ts:98` — `RateLimiter.make` creates a token-bucket rate limiter with `limit` and `interval` options
+- `repos/effect/packages/effect/src/RateLimiter.ts:98-98` — `RateLimiter.make` creates a token-bucket rate limiter with `limit` and `interval` options
 
 ## Observability
 
@@ -1263,7 +1270,7 @@ export const logError: (...message: ReadonlyArray<any>) => Effect<void, never, n
 **Where it appears:**
 - `repos/effect/packages/effect/src/Logger.ts:110-111` — `Logger.make` constructs a custom logger from an `Options → Output` function
 - `repos/effect/packages/effect/src/Logger.ts:363-366` — `withMinimumLogLevel` filters log output below a threshold
-- `repos/effect/packages/effect/src/Effect.ts:10850` — `Effect.log` emits at the default log level
+- `repos/effect/packages/effect/src/Effect.ts:10850-10850` — `Effect.log` emits at the default log level
 - `repos/effect/packages/effect/src/Effect.ts:10937-10980` — `logDebug` / `logInfo` / `logWarning` / `logError` emit at specific levels
 
 ### `Metric.counter` / `gauge` / `histogram` / `summary`
@@ -1323,7 +1330,7 @@ export const annotateCurrentSpan: {
 
 ## State management
 
-### `STM.gen` / `STM.atomically` — software transactional memory
+### `STM.gen` / `STM.commit` — software transactional memory
 
 **Signature:**
 ```ts
@@ -1335,9 +1342,11 @@ export const gen: <Self, Eff extends YieldWrap<STM<any, any, any>>, AEff>(
 export const commit: <A, E, R>(self: STM<A, E, R>) => Effect.Effect<A, E, R>
 ```
 
+> **Editorial note:** Earlier Effect versions and other STM libraries (e.g., ZIO) call this `atomically` — Effect names it `commit`.
+
 **Where it appears:**
 - `repos/effect/packages/effect/src/STM.ts:1073-1077` — `STM.gen` composes transactional operations in a generator
-- `repos/effect/packages/effect/src/STM.ts:424` — `commit` executes an STM transaction atomically as an Effect
+- `repos/effect/packages/effect/src/STM.ts:424-424` — `commit` executes an STM transaction atomically as an Effect
 
 ### `TRef` / `TQueue` / `TMap` / `TSemaphore` — STM-aware variants
 
@@ -1350,10 +1359,10 @@ export const make: (permits: number) => STM.STM<TSemaphore>             // TSema
 ```
 
 **Where it appears:**
-- `repos/effect/packages/effect/src/TRef.ts:106` — `TRef.make` creates a transactional mutable reference
-- `repos/effect/packages/effect/src/TQueue.ts:221` — `TQueue.bounded` creates a transactional bounded queue
-- `repos/effect/packages/effect/src/TMap.ts:201` — `TMap.make` creates a transactional key-value map
-- `repos/effect/packages/effect/src/TSemaphore.ts:75` — `TSemaphore.make` creates a transactional semaphore
+- `repos/effect/packages/effect/src/TRef.ts:106-106` — `TRef.make` creates a transactional mutable reference
+- `repos/effect/packages/effect/src/TQueue.ts:221-221` — `TQueue.bounded` creates a transactional bounded queue
+- `repos/effect/packages/effect/src/TMap.ts:201-201` — `TMap.make` creates a transactional key-value map
+- `repos/effect/packages/effect/src/TSemaphore.ts:75-75` — `TSemaphore.make` creates a transactional semaphore
 
 ## Time & Scheduling
 
@@ -1368,10 +1377,10 @@ export const recurs: (n: number) => Schedule<number>
 ```
 
 **Where it appears:**
-- `repos/effect/packages/effect/src/Schedule.ts:1757` — `spaced` waits a fixed delay between each recurrence
-- `repos/effect/packages/effect/src/Schedule.ts:1049` — `fixed` recurs on a fixed absolute interval
+- `repos/effect/packages/effect/src/Schedule.ts:1757-1757` — `spaced` waits a fixed delay between each recurrence
+- `repos/effect/packages/effect/src/Schedule.ts:1049-1049` — `fixed` recurs on a fixed absolute interval
 - `repos/effect/packages/effect/src/Schedule.ts:1003-1005` — `exponential` backs off with an exponential multiplier
-- `repos/effect/packages/effect/src/Schedule.ts:1604` — `recurs` runs exactly N times
+- `repos/effect/packages/effect/src/Schedule.ts:1604-1604` — `recurs` runs exactly N times
 
 ### `Schedule.jittered` / `compose` — combinators
 
@@ -1386,7 +1395,7 @@ export const compose: {
 ```
 
 **Where it appears:**
-- `repos/effect/packages/effect/src/Schedule.ts:1232` — `jittered` adds random noise to delays to avoid thundering-herd effects
+- `repos/effect/packages/effect/src/Schedule.ts:1232-1232` — `jittered` adds random noise to delays to avoid thundering-herd effects
 - `repos/effect/packages/effect/src/Schedule.ts:530-533` — `compose` pipes one schedule's output as another's input (e.g., `exponential |> jittered`)
 
 ### `Cron.parse` / `make` and `DateTime.now` / `make` / `format`
@@ -1409,11 +1418,11 @@ export const format: { (options?: ...): (self: DateTime.DateTime) => string; ...
 ```
 
 **Where it appears:**
-- `repos/effect/packages/effect/src/Cron.ts:293` — `Cron.parse` parses a cron expression string into a typed `Cron` value
+- `repos/effect/packages/effect/src/Cron.ts:293-297` — `Cron.parse` parses a cron expression string into a typed `Cron` value
 - `repos/effect/packages/effect/src/Cron.ts:138-144` — `Cron.make` builds a cron schedule from field iterables
-- `repos/effect/packages/effect/src/DateTime.ts:490` — `DateTime.now` returns the current UTC timestamp as an Effect
-- `repos/effect/packages/effect/src/DateTime.ts:464` — `DateTime.make` parses a date input into an `Option<DateTime>`
-- `repos/effect/packages/effect/src/DateTime.ts:1529` — `DateTime.format` formats a DateTime for display
+- `repos/effect/packages/effect/src/DateTime.ts:490-490` — `DateTime.now` returns the current UTC timestamp as an Effect
+- `repos/effect/packages/effect/src/DateTime.ts:464-464` — `DateTime.make` parses a date input into an `Option<DateTime>`
+- `repos/effect/packages/effect/src/DateTime.ts:1529-1545` — `DateTime.format` formats a DateTime for display
 
 ### Random — testable seed-based RNG service
 
@@ -1433,10 +1442,10 @@ export const next: Effect.Effect<number>
 ```
 
 **Where it appears:**
-- `repos/effect/packages/effect/src/Random.ts:29` — `Random` interface (service definition)
-- `repos/effect/packages/effect/src/Random.ts:146` — `Random` Tag for dependency injection
-- `repos/effect/packages/effect/src/Random.ts:171` — `make` creates a deterministic seeded RNG (for testing)
-- `repos/effect/packages/effect/src/Random.ts:65` — `next` draws the next `[0,1)` float from the service
+- `repos/effect/packages/effect/src/Random.ts:29-57` — `Random` interface (service definition)
+- `repos/effect/packages/effect/src/Random.ts:146-146` — `Random` Tag for dependency injection
+- `repos/effect/packages/effect/src/Random.ts:171-171` — `make` creates a deterministic seeded RNG (for testing)
+- `repos/effect/packages/effect/src/Random.ts:65-65` — `next` draws the next `[0,1)` float from the service
 
 ## Pattern matching
 
@@ -1450,7 +1459,7 @@ export const type: <I>() => Matcher<I, Types.Without<never>, I, never, never>
 
 **Where it appears:**
 - `repos/effect/packages/effect/src/Match.ts:237-239` — `value` starts a match on a specific runtime value
-- `repos/effect/packages/effect/src/Match.ts:195` — `type` starts a match on a type only (no runtime value yet, returns a function)
+- `repos/effect/packages/effect/src/Match.ts:195-195` — `type` starts a match on a type only (no runtime value yet, returns a function)
 
 ### `Match.when` / `not` / `exhaustive` — clauses and finalizers
 
@@ -1502,9 +1511,9 @@ export const all: <const Arg extends Iterable<Config<any>> | Record<string, Conf
 ```
 
 **Where it appears:**
-- `repos/effect/packages/effect/src/Config.ts:406` — `string` reads a string config value by name
-- `repos/effect/packages/effect/src/Config.ts:186` — `integer` reads and parses an integer
-- `repos/effect/packages/effect/src/Config.ts:130` — `boolean` reads a boolean flag
+- `repos/effect/packages/effect/src/Config.ts:406-406` — `string` reads a string config value by name
+- `repos/effect/packages/effect/src/Config.ts:186-186` — `integer` reads and parses an integer
+- `repos/effect/packages/effect/src/Config.ts:130-130` — `boolean` reads a boolean flag
 - `repos/effect/packages/effect/src/Config.ts:281-283` — `nested` scopes a config under a name prefix
 - `repos/effect/packages/effect/src/Config.ts:103-105` — `all` combines multiple configs into a record or tuple
 
@@ -1518,9 +1527,9 @@ export const fromJson: (json: unknown) => ConfigProvider
 ```
 
 **Where it appears:**
-- `repos/effect/packages/effect/src/ConfigProvider.ts:183` — `fromEnv` reads config from `process.env`
+- `repos/effect/packages/effect/src/ConfigProvider.ts:183-183` — `fromEnv` reads config from `process.env`
 - `repos/effect/packages/effect/src/ConfigProvider.ts:210-211` — `fromMap` reads config from an in-memory `Map` (used in tests)
-- `repos/effect/packages/effect/src/ConfigProvider.ts:200` — `fromJson` reads config from a JSON object
+- `repos/effect/packages/effect/src/ConfigProvider.ts:200-200` — `fromJson` reads config from a JSON object
 
 ### Redacted — prevent secret values from leaking to logs/spans
 
@@ -1530,7 +1539,7 @@ export const make: <A>(value: A) => Redacted<A>
 ```
 
 **Where it appears:**
-- `repos/effect/packages/effect/src/Redacted.ts:75` — `Redacted.make` wraps any value so its `toString` / `toJSON` / inspect output is `<redacted>`
+- `repos/effect/packages/effect/src/Redacted.ts:75-75` — `Redacted.make` wraps any value so its `toString` / `toJSON` / inspect output is `<redacted>`
 
 ### Secret — memory-safe secret string
 
@@ -1540,7 +1549,7 @@ export const make: (bytes: Array<number>) => Secret
 ```
 
 **Where it appears:**
-- `repos/effect/packages/effect/src/Secret.ts:60` — `Secret.make` stores a byte array that cannot be inadvertently serialized or printed
+- `repos/effect/packages/effect/src/Secret.ts:60-60` — `Secret.make` stores a byte array that cannot be inadvertently serialized or printed
 
 ### Encoding — Base64 / hex / UTF-8 codecs
 
@@ -1554,11 +1563,11 @@ export const decodeHex: (str: string) => Either.Either<Uint8Array, DecodeExcepti
 ```
 
 **Where it appears:**
-- `repos/effect/packages/effect/src/Encoding.ts:22` — `encodeBase64` encodes bytes or a string to Base64
-- `repos/effect/packages/effect/src/Encoding.ts:31` — `decodeBase64` decodes Base64 to `Uint8Array`, returning Either
-- `repos/effect/packages/effect/src/Encoding.ts:47` — `encodeBase64Url` uses URL-safe Base64 alphabet
-- `repos/effect/packages/effect/src/Encoding.ts:72` — `encodeHex` encodes bytes or a string to hex
-- `repos/effect/packages/effect/src/Encoding.ts:81` — `decodeHex` decodes hex to `Uint8Array`, returning Either
+- `repos/effect/packages/effect/src/Encoding.ts:22-23` — `encodeBase64` encodes bytes or a string to Base64
+- `repos/effect/packages/effect/src/Encoding.ts:31-31` — `decodeBase64` decodes Base64 to `Uint8Array`, returning Either
+- `repos/effect/packages/effect/src/Encoding.ts:47-48` — `encodeBase64Url` uses URL-safe Base64 alphabet
+- `repos/effect/packages/effect/src/Encoding.ts:72-73` — `encodeHex` encodes bytes or a string to hex
+- `repos/effect/packages/effect/src/Encoding.ts:81-81` — `decodeHex` decodes hex to `Uint8Array`, returning Either
 
 ## Request batching & Caching
 
@@ -1584,7 +1593,7 @@ export const request: {
 ```
 
 **Where it appears:**
-- `repos/effect/packages/effect/src/Request.ts:112` — `Request.of` creates a tagged request constructor type
+- `repos/effect/packages/effect/src/Request.ts:112-112` — `Request.of` creates a tagged request constructor type
 - `repos/effect/packages/effect/src/RequestResolver.ts:118-120` — `RequestResolver.make` batches requests into grouped calls
 - `repos/effect/packages/effect/src/Effect.ts:12828-12832` — `Effect.request` issues a request through a resolver, enabling automatic batching and deduplication
 
@@ -1626,9 +1635,9 @@ export const fromIterable = <A>(self: Iterable<A>): Chunk<A>
 ```
 
 **Where it appears:**
-- `repos/effect/packages/effect/src/Chunk.ts:225` — `empty` returns a shared empty Chunk singleton
+- `repos/effect/packages/effect/src/Chunk.ts:225-225` — `empty` returns a shared empty Chunk singleton
 - `repos/effect/packages/effect/src/Chunk.ts:233-234` — `make` creates a non-empty Chunk from varargs
-- `repos/effect/packages/effect/src/Chunk.ts:242` — `of` wraps a single element
+- `repos/effect/packages/effect/src/Chunk.ts:242-242` — `of` wraps a single element
 - `repos/effect/packages/effect/src/Chunk.ts:250-251` — `fromIterable` converts any iterable to a Chunk
 
 ### HashMap — structural-equality keyed map
@@ -1643,9 +1652,9 @@ export const fromIterable: <K, V>(entries: Iterable<readonly [K, V]>) => HashMap
 ```
 
 **Where it appears:**
-- `repos/effect/packages/effect/src/HashMap.ts:108` — `empty` creates an empty HashMap
+- `repos/effect/packages/effect/src/HashMap.ts:108-108` — `empty` creates an empty HashMap
 - `repos/effect/packages/effect/src/HashMap.ts:116-119` — `make` creates from key-value pairs
-- `repos/effect/packages/effect/src/HashMap.ts:129` — `fromIterable` creates from an iterable of pairs; uses structural equality via `Equal`
+- `repos/effect/packages/effect/src/HashMap.ts:129-129` — `fromIterable` creates from an iterable of pairs; uses structural equality via `Equal`
 
 ### HashSet — structural-equality set
 
@@ -1657,9 +1666,9 @@ export const fromIterable: <A>(elements: Iterable<A>) => HashSet<A>
 ```
 
 **Where it appears:**
-- `repos/effect/packages/effect/src/HashSet.ts:375` — `empty` creates an empty HashSet
-- `repos/effect/packages/effect/src/HashSet.ts:559` — `make` creates from vararg elements
-- `repos/effect/packages/effect/src/HashSet.ts:470` — `fromIterable` creates from any iterable; deduplication uses `Equal`
+- `repos/effect/packages/effect/src/HashSet.ts:375-375` — `empty` creates an empty HashSet
+- `repos/effect/packages/effect/src/HashSet.ts:559-559` — `make` creates from vararg elements
+- `repos/effect/packages/effect/src/HashSet.ts:470-470` — `fromIterable` creates from any iterable; deduplication uses `Equal`
 
 ### List — persistent linked list
 
@@ -1673,10 +1682,10 @@ export const fromIterable = <A>(prefix: Iterable<A>): List<A>
 ```
 
 **Where it appears:**
-- `repos/effect/packages/effect/src/List.ts:251` — `nil` returns the empty list
-- `repos/effect/packages/effect/src/List.ts:259` — `cons` prepends an element
-- `repos/effect/packages/effect/src/List.ts:277` — `of` creates a singleton list
-- `repos/effect/packages/effect/src/List.ts:285` — `fromIterable` builds a List from any iterable (reversed at each step)
+- `repos/effect/packages/effect/src/List.ts:251-251` — `nil` returns the empty list
+- `repos/effect/packages/effect/src/List.ts:259-259` — `cons` prepends an element
+- `repos/effect/packages/effect/src/List.ts:277-277` — `of` creates a singleton list
+- `repos/effect/packages/effect/src/List.ts:285-295` — `fromIterable` builds a List from any iterable (reversed at each step)
 
 ### SortedMap / SortedSet (with Order)
 
@@ -1695,9 +1704,9 @@ export const make = <K>(ord: Order<K>) => <Entries extends ReadonlyArray<K>>(...
 ```
 
 **Where it appears:**
-- `repos/effect/packages/effect/src/SortedMap.ts:92` — `SortedMap.empty` creates an empty sorted map with a given `Order`
+- `repos/effect/packages/effect/src/SortedMap.ts:92-92` — `SortedMap.empty` creates an empty sorted map with a given `Order`
 - `repos/effect/packages/effect/src/SortedMap.ts:100-102` — `SortedMap.fromIterable` builds from entries using an `Order`
-- `repos/effect/packages/effect/src/SortedSet.ts:92` — `SortedSet.empty` creates an empty sorted set
+- `repos/effect/packages/effect/src/SortedSet.ts:92-92` — `SortedSet.empty` creates an empty sorted set
 - `repos/effect/packages/effect/src/SortedSet.ts:113-115` — `SortedSet.make` creates from vararg elements with an `Order`
 
 ### RedBlackTree
@@ -1717,7 +1726,7 @@ export const insert: {
 ```
 
 **Where it appears:**
-- `repos/effect/packages/effect/src/RedBlackTree.ts:68` — `empty` creates an empty tree with an `Order`
+- `repos/effect/packages/effect/src/RedBlackTree.ts:68-68` — `empty` creates an empty tree with an `Order`
 - `repos/effect/packages/effect/src/RedBlackTree.ts:76-78` — `fromIterable` builds from sorted-order entries
 - `repos/effect/packages/effect/src/RedBlackTree.ts:87-89` — `make` creates from vararg key-value pairs
 - `repos/effect/packages/effect/src/RedBlackTree.ts:235-237` — `insert` is the primary mutation returning a new tree
@@ -1734,8 +1743,8 @@ export const make: <Entries extends Array<readonly [string, any]>>(
 ```
 
 **Where it appears:**
-- `repos/effect/packages/effect/src/Trie.ts:60` — `empty` creates an empty Trie
-- `repos/effect/packages/effect/src/Trie.ts:81` — `fromIterable` builds from string-keyed entries
+- `repos/effect/packages/effect/src/Trie.ts:60-60` — `empty` creates an empty Trie
+- `repos/effect/packages/effect/src/Trie.ts:81-81` — `fromIterable` builds from string-keyed entries
 - `repos/effect/packages/effect/src/Trie.ts:100-102` — `make` creates from vararg `[string, V]` pairs
 
 ## Unverified (not yet cited)
