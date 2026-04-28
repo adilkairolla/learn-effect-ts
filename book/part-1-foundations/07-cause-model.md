@@ -72,7 +72,7 @@ When the Effect runtime finishes executing an effect it produces an `Exit<A, E>`
 export type Exit<A, E = never> = Success<A, E> | Failure<A, E>
 ```
 
-`Success` carries the value `A` (`repos/effect/packages/effect/src/Exit.ts:69-78`):
+`Success` carries the value `A` (`repos/effect/packages/effect/src/Exit.ts:69-78`, simplified — internal fields like `_op` and Unify symbols omitted for clarity):
 
 ```ts
 export interface Success<out A, out E> extends Effect.Effect<A, E>, Pipeable, Inspectable {
@@ -180,6 +180,8 @@ export interface Parallel<out E> extends Cause.Variance<E>, Equal.Equal, Pipeabl
 ```
 
 `Cause.parallel(c1, c2)` constructs it (`repos/effect/packages/effect/src/Cause.ts:639`).
+
+**Why the distinction matters.** A `Sequential` cause carries causal ordering — typically "the body failed, then the finalizer failed" — and a caller may want to surface them as a chain or retry the body independently of the finalizer. A `Parallel` cause means the failures happened with no causal relationship — typical of `Effect.all([f1, f2])` where both branches fail. Recovery and reporting strategies differ: parallel causes often want aggregation (one consolidated error containing all branches); sequential causes often want temporal narrative ("failed during cleanup"). When you fold a `Cause` with `Cause.failures` or `Cause.defects`, the distinction is flattened — but if you walk the tree by hand (rare), you can preserve it.
 
 ### Utility functions for inspecting causes
 
@@ -343,10 +345,10 @@ const par = Cause.parallel(Cause.fail("left"), Cause.die(new Error("right")))
 **`Cause.isInterruptedOnly(c)` — distinguish cancellation from real failure**
 
 ```ts
-import { Cause } from "effect"
+import { Cause, FiberId } from "effect"
 // Returns true only when the cause tree contains Interrupt nodes and nothing else.
 // repos/effect/packages/effect/src/Cause.ts:804
-const onlyCancel = Cause.isInterruptedOnly(Cause.interrupt(/* fiberId */ {} as any))
+const onlyCancel = Cause.isInterruptedOnly(Cause.interrupt(FiberId.none))
 ```
 
 ---
@@ -399,7 +401,7 @@ import { Cause, Effect } from "effect"
 const withDefectLogging = <A, E>(effect: Effect.Effect<A, E>) =>
   effect.pipe(
     Effect.catchAllCause((cause) =>
-      Cause.isDie(cause)
+      Cause.isDieType(cause)
         ? Effect.zipRight(
             Effect.logError("defect detected", cause),
             Effect.failCause(cause)
