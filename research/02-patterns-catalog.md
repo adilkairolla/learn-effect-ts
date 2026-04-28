@@ -20,6 +20,7 @@ Each pattern follows this fixed schema:
 - [Effects](#effects)
 - [Layers & Context](#layers--context)
 - [Errors & Cause](#errors--cause)
+- [Option & Either](#option--either)
 - [Schema](#schema)
 - [Streams & Concurrency](#streams--concurrency)
 - [Resources & Scope](#resources--scope)
@@ -33,6 +34,7 @@ Each pattern follows this fixed schema:
 - [Pattern matching](#pattern-matching)
 - [Configuration](#configuration)
 - [Request batching & Caching](#request-batching--caching)
+- [Immutable Collections](#immutable-collections)
 
 ## Constructors
 
@@ -64,6 +66,14 @@ Each pattern follows this fixed schema:
 
 ### `ManagedRuntime.make`
 
+### Runtime — pre-built runtime for executing Effects
+
+### RuntimeFlags — concurrency, tracing, interruption controls
+
+### LayerMap — keyed map of layers (per-tenant / per-request)
+
+### Reloadable — hot-reload a service layer at runtime
+
 ## Errors & Cause
 
 ### `Data.TaggedError`
@@ -71,6 +81,16 @@ Each pattern follows this fixed schema:
 ### `Cause` — `fail` / `die` / `interrupt` variants
 
 ### `Effect.catchTag` / `catchTags` / `sandbox` — error handling
+
+### Exit — Effect outcome value (Success / Failure of Cause)
+
+## Option & Either
+
+### Option — Some / None and combinators
+
+### Either — Left / Right and combinators
+
+### Bridging Option/Either ↔ Effect (fromOption, fromEither, getOrFail)
 
 ## Schema
 
@@ -96,7 +116,17 @@ Each pattern follows this fixed schema:
 
 ### `Effect.fork` / `forkDaemon` / `forkScoped` / `forkIn`
 
+### Fiber — joining, interrupting, racing (Effect.fork return type)
+
+### FiberId — fiber identity and lineage
+
+### Supervisor — observe and react to fiber lifecycle
+
 ### Structured concurrency via `Scope`
+
+### Channel — bidirectional stream primitive (Stream's underlying type)
+
+### Sink — Stream consumer / aggregator
 
 ## Resources & Scope
 
@@ -109,6 +139,8 @@ Each pattern follows this fixed schema:
 ### `RcRef` and `RcMap` — reference-counted resources
 
 ### `Pool.make` / `Pool.makeWithTTL` and `KeyedPool`
+
+### ScopedRef — scope-attached mutable reference
 
 ## API style (pipeable, dual)
 
@@ -154,6 +186,10 @@ Each pattern follows this fixed schema:
 
 ### `FiberSet` / `FiberMap` / `FiberHandle` — fiber lifecycle tracking
 
+### SynchronizedRef — atomic effectful update
+
+### RateLimiter — token-bucket rate limiting
+
 ## Observability
 
 ### `Logger.make` / `withMinimumLogLevel` and `Effect.log*` family
@@ -176,6 +212,8 @@ Each pattern follows this fixed schema:
 
 ### `Cron.parse` / `make` and `DateTime.now` / `make` / `format`
 
+### Random — testable seed-based RNG service
+
 ## Pattern matching
 
 ### `Match.value` / `Match.type` — starting a match
@@ -188,11 +226,33 @@ Each pattern follows this fixed schema:
 
 ### `ConfigProvider.fromEnv` / `fromMap` / `fromJson`
 
+### Redacted — prevent secret values from leaking to logs/spans
+
+### Secret — memory-safe secret string
+
+### Encoding — Base64 / hex / UTF-8 codecs
+
 ## Request batching & Caching
 
 ### `Request.of` / `RequestResolver.make` / `Effect.request` — request batching
 
 ### `Cache.make` / `ScopedCache.make` — effect-based memoization
+
+## Immutable Collections
+
+### Chunk — typed array container (Stream's element type)
+
+### HashMap — structural-equality keyed map
+
+### HashSet — structural-equality set
+
+### List — persistent linked list
+
+### SortedMap / SortedSet (with Order)
+
+### RedBlackTree
+
+### Trie
 
 ## Unverified (not yet cited)
 
