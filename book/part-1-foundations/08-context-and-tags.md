@@ -83,7 +83,7 @@ When you write `yield* Database` inside `Effect.gen`, two things happen. At the 
 
 The string identifier `"Database"` is the runtime key. This has one important consequence: two different Tag classes with the same string key are treated as *the same tag* by the runtime. If you define `class Database extends Context.Tag("Database")...` in two separate modules and provide both, the second provision overwrites the first. The convention (visible throughout the Effect packages) is to use fully-qualified, namespaced strings: `"@effect/experimental/RateLimiter/RateLimiterStore"` rather than just `"RateLimiterStore"`. See the real usage at `repos/effect/packages/experimental/src/RateLimiter.ts:391`.
 
-Service tags follow PascalCase class names, matching the naming convention documented in `research/03-conventions.md` and visible throughout the Effect source at `repos/effect/packages/effect/src/Context.ts:513-524`.
+Service tags follow PascalCase class names, matching the naming convention documented in `research/03-conventions.md`. For real-world Tag class usages, see the `RateLimiter` and `EventLog` examples cited elsewhere in this chapter (Variations and the production example sections).
 
 ### Part B — `Context.GenericTag`
 
@@ -137,7 +137,7 @@ const program = Effect.gen(function* () {
 // program : Effect<"info", never, never>
 ```
 
-Because `Reference` always has a default, an effect that yields it *does not add the tag to its `R` union*. The requirement is pre-satisfied. Callers can still override the default via `Effect.provideService(LogLevel, "debug")`. The built-in `Clock`, `Random`, and `Logger` services in Effect use this pattern: they ship with usable defaults but can be replaced in tests or production.
+Because `Reference` always has a default, an effect that yields it *does not add the tag to its `R` union*. The requirement is pre-satisfied. Callers can still override the default via `Effect.provideService(LogLevel, "debug")`. Internal services like `Tracer.DisablePropagation` (`repos/effect/packages/effect/src/Tracer.ts:182`) and `Layer.CurrentMemoMap` (`repos/effect/packages/effect/src/Layer.ts:151`) use `Context.Reference` with built-in defaults — when no value is explicitly provided, the default is used. (`Clock`, `Random`, and `Logger` have usable defaults too, but those come from the live runtime environment via Layer, not from `Reference`.)
 
 Note: `Context.Reference` is itself marked `@experimental` at `repos/effect/packages/effect/src/Context.ts:580`. The API may change in minor releases.
 
@@ -172,6 +172,8 @@ class Logger extends Effect.Service<Logger>()("Logger", {
 }) {}
 ```
 
+(The example above mirrors the canonical JSDoc usage at `repos/effect/packages/effect/src/Effect.ts:13562-13578`. For real-world non-JSDoc instances, see `repos/effect/packages/cluster/src/internal/entityReaper.ts:9` and `repos/effect/packages/cluster/src/MessageStorage.ts:686`, which are also cited below.)
+
 Each `Effect.Service` class automatically exposes a `.Default` Layer that wires up the implementation and its declared `dependencies`. When `dependencies` are present the class exposes `DefaultWithoutDependencies` as well, for cases where you want to provide the dependency layer separately.
 
 The `make` option accepts `effect` (async, effectful construction), `scoped` (with resource lifecycle — Chapter 10), `sync` (synchronous, no effects), or `succeed` (plain value).
@@ -200,6 +202,8 @@ const merged = Context.merge(portCtx, Context.make(Host, { host: "0.0.0.0" }))
 ```
 
 The relevant exports are at `repos/effect/packages/effect/src/Context.ts:290` (`make`), `316` (`add`), `343` (`get`), and `438` (`merge`). `Context.pick` at line 496 returns a narrowed context containing only the listed tags.
+
+The `Effect.provideService` (`repos/effect/packages/effect/src/Effect.ts:7636`) and `Effect.provideServiceEffect` (`repos/effect/packages/effect/src/Effect.ts:7659`) helpers are how application code typically supplies services — usually you provide a Layer (Chapter 09), but for one-off services these direct calls are convenient.
 
 ---
 
