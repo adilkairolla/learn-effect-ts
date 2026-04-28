@@ -29,7 +29,7 @@ packages/effect/
 └── CHANGELOG.md
 ```
 
-This layout is identical across `@effect/cli` (`repos/effect/packages/cli/`) and `@effect/sql` (`repos/effect/packages/sql/`). The scripts block and build pipeline are byte-for-byte the same in all three (see `repos/effect/packages/effect/package.json` scripts, `repos/effect/packages/cli/package.json` scripts, `repos/effect/packages/sql/package.json` scripts).
+This layout is identical across `@effect/cli` (`repos/effect/packages/cli/`) and `@effect/sql` (`repos/effect/packages/sql/`). The core build scripts (`build-esm`, `build-annotate`, `build-cjs`, `build`, `codegen`) are identical. `effect` additionally has `test-types: tstyche` for type-level tests, which `cli` and `sql` omit (see `repos/effect/packages/effect/package.json` scripts, `repos/effect/packages/cli/package.json` scripts, `repos/effect/packages/sql/package.json` scripts).
 
 **Notable variation**: `@effect/cli`'s `package.json` includes an `"effect": { "generateIndex": { "include": ["**/*"] } }` field that enables auto-generation of `index.ts` via build tooling (`repos/effect/packages/cli/package.json`). The core `effect` package does not use this — its `index.ts` is hand-maintained.
 
@@ -68,7 +68,7 @@ export {
 } from "./Function.js"
 ```
 
-The file extension in every import specifier is `.js` (not `.ts`), which is required by `"moduleResolution": "NodeNext"` (see `repos/effect/repos/effect/tsconfig.base.json`).
+The file extension in every import specifier is `.js` (not `.ts`), which is required by `"moduleResolution": "NodeNext"` (see `repos/effect/tsconfig.base.json`).
 
 `@effect/cli` (`repos/effect/packages/cli/src/index.ts`) and `@effect/sql` (`repos/effect/packages/sql/src/index.ts`) use the same pure namespace re-export pattern with no named-value overrides.
 
@@ -96,9 +96,9 @@ export const CauseTypeId: Cause.CauseTypeId = Symbol.for(…)
 
 `/** @internal */` is a single-line block comment with no other tags. The TypeScript build option `"stripInternal": true` in `tsconfig.build.json` (`repos/effect/packages/effect/tsconfig.build.json:8`) strips these declarations from the emitted `.d.ts` files, so they never appear in the public type surface.
 
-`@effect/cli`'s `Args.ts` uses only `@since` and `@category` — no `@example` or `@experimental` (`repos/effect/packages/cli/src/Args.ts`). This is a per-module choice, not a per-package policy.
+`@effect/cli`'s `Args.ts` uses only `@since` and `@category` — no `@example` or `@experimental` (`repos/effect/packages/cli/src/Args.ts`). This is a per-module choice, not a per-package policy. `@effect/cli` and `@effect/sql` tag new exports at `@since 1.0.0` (some pre-existing modules show `@since 2.0.0` from before the package's 1.0.0 cutover — see `repos/effect/packages/cli/src/ConfigFile.ts`).
 
-**Surprising finding**: There is no `@param`, `@returns`, or `@throws` tag anywhere in Effect source. Documentation is written as prose paragraphs inside the JSDoc block, with section headers like `**Details**`, `**When to Use**`, and `**Example**` (in Markdown, not JSDoc tags).
+The dominant convention is prose paragraphs without `@param`/`@returns`/`@throws` — see `repos/effect/packages/effect/src/Effect.ts` for representative style. A small minority of files use those tags: `Number.ts` and `MutableHashSet.ts` use `@param`/`@returns`; `Either.ts` uses `@throws`. These are exceptions, not the norm. New code should follow the dominant prose style, with section headers like `**Details**`, `**When to Use**`, and `**Example**` (in Markdown, not JSDoc tags).
 
 ---
 
@@ -192,7 +192,7 @@ Error class names follow `<Domain>Error` (e.g. `ParseError`, `GraphError`, `SqlE
 The community convention (shown in Effect's own docs examples) is to suffix a `Layer` value with `Live` when it provides a real implementation:
 
 ```ts
-// repos/effect/packages/effect/src/Effect.ts, lines 7512-7518
+// repos/effect/packages/effect/src/Effect.ts, lines 7512-7518 (inside an @example block — illustrative, not a real exported variable)
 const DatabaseLive = Layer.succeed(Database, { query: … })
 ```
 
@@ -232,7 +232,14 @@ export const map: {
 
 - **Semver policy**: The core `effect` package is at `3.x.y` (currently `3.21.2`). Subpackages use independent versioning at `0.x.y` (`@effect/cli@0.75.1`, `@effect/sql@0.51.1`). This means the core package follows semver with `MAJOR.MINOR.PATCH`, while subpackages treat `MINOR` changes as potentially breaking (the `0.x` convention).
 
-- **Prerelease tagging**: The changeset config supports snapshots via `"prereleaseTemplate": "{tag}-{commit}"` (`repos/effect/.changeset/config.json:11`). Prerelease packages are published by running `changeset publish` with a snapshot tag rather than the normal version bump workflow.
+- **Prerelease tagging**: The changeset config supports snapshots via a nested `"snapshot"` object (`repos/effect/.changeset/config.json:10-13`):
+  ```json
+  "snapshot": {
+    "useCalculatedVersion": false,
+    "prereleaseTemplate": "{tag}-{commit}"
+  }
+  ```
+  Prerelease packages are published by running `changeset publish` with a snapshot tag rather than the normal version bump workflow.
 
 - **Release script**: `changeset-publish` in `repos/effect/package.json` runs `pnpm codemod && pnpm build && TEST_DIST= pnpm vitest && changeset publish` — it codemods, full-builds, runs the test suite against the dist output, and then publishes.
 
