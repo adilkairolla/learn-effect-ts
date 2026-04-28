@@ -69,10 +69,12 @@ const program3 = Effect.map(Effect.succeed(1), (n) => n + 1)
 
 ```ts
 export function pipe<A>(a: A): A
-export function pipe<A, B>(a: A, ab: (a: A) => B): B
-export function pipe<A, B, C>(a: A, ab: (a: A) => B, bc: (b: B) => C): C
+export function pipe<A, B = never>(a: A, ab: (a: A) => B): B
+export function pipe<A, B = never, C = never>(a: A, ab: (a: A) => B, bc: (b: B) => C): C
 // ... up to 20 overloads
 ```
+
+The `= never` defaults on type parameters beyond the first matter: they prevent TypeScript from widening inference when fewer arguments are supplied than the overload declares. Without the defaults, TypeScript could pick up a longer overload and infer an unintended type; with `= never`, an unsupplied type argument stays `never` rather than being inferred from context.
 
 The implementation is simple: it takes a value and a sequence of unary functions, then applies them left-to-right. `pipe(x, f, g, h)` is exactly `h(g(f(x)))` — but it reads in execution order. Each function receives the return value of the previous one, and TypeScript infers all intermediate types from left to right without annotation.
 
@@ -85,8 +87,8 @@ Most types in the Effect ecosystem implement the `Pipeable` interface, defined a
 ```ts
 export interface Pipeable {
   pipe<A>(this: A): A
-  pipe<A, B>(this: A, ab: (_: A) => B): B
-  pipe<A, B, C>(this: A, ab: (_: A) => B, bc: (_: B) => C): C
+  pipe<A, B = never>(this: A, ab: (_: A) => B): B
+  pipe<A, B = never, C = never>(this: A, ab: (_: A) => B, bc: (_: B) => C): C
   // ... further overloads
 }
 ```
@@ -198,7 +200,7 @@ TypeScript still infers `n: number` — but in a long chain of nested calls, the
 Take a small program that fetches a user, formats their name, logs the result, and returns the name. Below are all three equivalent forms, from least readable to most.
 
 ```ts
-import { Effect } from "effect"
+import { pipe, Effect } from "effect"
 
 interface User { id: string; firstName: string; lastName: string }
 
@@ -286,13 +288,17 @@ const addOne = Effect.map((n: number) => n + 1)
 
 ```ts
 import { dual } from "effect/Function"
-import { Effect } from "effect"
+import { Effect, Duration, Cause } from "effect"
+
+// Effect.timeout signature (repos/effect/packages/effect/src/Effect.ts:7027-7030):
+//   (duration: Duration.DurationInput): <A, E, R>(self: Effect<A, E, R>) => Effect<A, E | Cause.TimeoutException, R>
+//   <A, E, R>(self: Effect<A, E, R>, duration: Duration.DurationInput): Effect<A, Cause.TimeoutException | E, R>
 
 export const withTimeout: {
-  (ms: number): <A, E, R>(self: Effect.Effect<A, E, R>) => Effect.Effect<A, E, R>
-  <A, E, R>(self: Effect.Effect<A, E, R>, ms: number): Effect.Effect<A, E, R>
-} = dual(2, <A, E, R>(self: Effect.Effect<A, E, R>, ms: number) =>
-  Effect.timeout(self, ms)
+  (duration: Duration.DurationInput): <A, E, R>(self: Effect.Effect<A, E, R>) => Effect.Effect<A, E | Cause.TimeoutException, R>
+  <A, E, R>(self: Effect.Effect<A, E, R>, duration: Duration.DurationInput): Effect.Effect<A, Cause.TimeoutException | E, R>
+} = dual(2, <A, E, R>(self: Effect.Effect<A, E, R>, duration: Duration.DurationInput) =>
+  Effect.timeout(self, duration)
 )
 ```
 
