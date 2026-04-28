@@ -77,11 +77,11 @@ console.log(HashSet.size(set))   // 1
 
 ### Part A — `Data.struct`, `Data.tuple`, `Data.array`
 
-These are factory functions that wrap plain values with structural-equality traits. The implementation in `repos/effect/packages/effect/src/Data.ts:27-104` shows all three:
+These are factory functions that wrap plain values with structural-equality traits.
 
-- `Data.struct` (line 47) copies the field values onto a new object whose prototype is `StructuralPrototype`.
-- `Data.tuple` (line 76) delegates to `Data.array` after spreading its arguments.
-- `Data.array` (line 104) shallow-copies the array and sets its prototype to `ArrayProto`.
+- `Data.struct` (`Data.ts:47`) delegates to the implementation in `repos/effect/packages/effect/src/internal/data.ts:36`, which is `Object.assign(Object.create(StructuralPrototype), as)` — a shallow copy of all own enumerable properties onto a new object whose prototype carries the `Equal`/`Hash` traits.
+- `Data.tuple` calls `unsafeArray` directly on its spread arguments (`Data.ts:76`), bypassing the defensive `as.slice(0)` copy that `Data.array` performs (`Data.ts:69`). The result is functionally identical to `Data.array` but skips a clone — appropriate because the spread arguments form a fresh array that no caller can mutate.
+- `Data.array` (line 69) shallow-copies the array with `as.slice(0)` and sets its prototype to `ArrayProto`.
 
 `StructuralPrototype` lives in `repos/effect/packages/effect/src/internal/effectable.ts:88-101` and provides two symbol-keyed methods:
 
@@ -151,7 +151,7 @@ Both are class forms, and they are easy to confuse. Here is the rule:
 
 Under the hood, `Schema.Class` uses `Data.Class` as its base (see `repos/effect/packages/effect/src/Schema.ts:8727-8734`, where `Base: data_.Class` is passed to `makeClass`). This means every `Schema.Class` instance is *also* structurally equatable via `Equal.equals`. You get both — but if you only need value-object semantics and no schema logic, the lighter `Data.Class` form is less ceremony.
 
-**`Data.TaggedError` from Chapter 06** is also built on this foundation. Looking at `repos/effect/packages/effect/src/Data.ts:580-590`, `TaggedError` creates a subclass of `Data.Error`, which in turn has `StructuralPrototype` in its chain. Every `TaggedError` instance participates in structural equality.
+`Data.TaggedError` (covered in Chapter 06) is built on `Data.Error`, which extends `core.YieldableError` — a class extending the native `Error`. Tagged errors get the `_tag` discriminator and the yieldable-in-`Effect.gen` behavior from this chain, but they do NOT inherit `StructuralPrototype` — the `Equal.equals` and `Hash` traits do not apply to `Data.Error` instances. If you need structural equality on an error, wrap its fields in a `Data.struct` or use `Data.Class` instead. (`Data.ts:554-590`)
 
 ### Part C — `Data.TaggedEnum` (type) vs `Data.taggedEnum` (constructor)
 
@@ -228,7 +228,7 @@ const placed = OrderEvent.OrderPlaced({ orderId: "o-1", total: 99 })
 // placed.orderId === "o-1"
 ```
 
-This pattern is used in the Effect source itself. The `@effect/cluster` package's `ShardingRegistrationEvent` module (`repos/effect/packages/cluster/src/ShardingRegistrationEvent.ts:61`) defines the union type separately and then calls `Data.taggedEnum<ShardingRegistrationEvent>()` to generate constructors and the `$match` helper.
+`repos/effect/packages/cluster/src/ShardingRegistrationEvent.ts` (around line 61) shows a real-world `Data.taggedEnum` usage: the cluster package declares the variant interfaces (`EntityRegistered`, `SingletonRegistered`) and a union type alias (`ShardingRegistrationEvent`) directly in TypeScript, then calls `Data.taggedEnum<ShardingRegistrationEvent>()` to derive the constructor record. This is a valid alternative to the `Data.TaggedEnum<{...}>` pattern the chapter showed earlier — both produce equivalent runtime constructors, but the manual interface form is preferred when the variants need to be exported individually as named types.
 
 ### Part D — `Equal.Equal` and `Hash.Hash` interfaces
 
@@ -271,7 +271,7 @@ It is a dual function — data-first or data-last (Chapter 04). `Equal.equals(a,
 export const hash: <A>(self: A) => number = ...
 ```
 
-For values that implement `Hash.Hash` (i.e., anything produced by `Data.*`), it calls `self[symbol]()`. For plain objects without the interface, it falls back to a random identity-based hash.
+For values that implement `Hash.Hash` (i.e., anything produced by `Data.*`), it calls `self[symbol]()`. If the value's class doesn't implement `Hash`, the runtime falls back to a random number generated once per object reference and cached in a `WeakMap` keyed by the object identity (`Hash.ts:62-66` — see the `randomHashCache`). The hash is stable for the lifetime of the reference within a process, but two equivalent objects with different references will get different hashes.
 
 To implement `Equal` and `Hash` manually on a custom class — for example, when you cannot extend `Data.Class` — you add both symbol-keyed methods:
 
@@ -395,7 +395,7 @@ const items = Data.array([Data.struct({ id: 1 }), Data.struct({ id: 2 })])
 // Equal.equals(items, Data.array([Data.struct({ id: 1 }), Data.struct({ id: 2 })])) === true
 
 // Data.Class — class form with structural equality
-class Point extends Data.Class<{ x: number; y: number }>() {}
+class Point extends Data.Class<{ x: number; y: number }> {}
 // new Point({ x: 1, y: 2 }) equals new Point({ x: 1, y: 2 }) by Equal.equals
 
 // Data.TaggedClass — tagged class with _tag discriminant
@@ -462,7 +462,7 @@ console.log(Equal.equals(a, b))  // false — no Equal implementation
 
 // Right — extend Data.Class so instances participate in structural equality
 import { Data, Equal } from "effect"
-class OrderId extends Data.Class<{ value: string }>() {}
+class OrderId extends Data.Class<{ value: string }> {}
 const c = new OrderId({ value: "o-1" })
 const d = new OrderId({ value: "o-1" })
 console.log(Equal.equals(c, d))  // true
@@ -472,7 +472,7 @@ console.log(Equal.equals(c, d))  // true
 
 ## See also
 
-- [Chapter 06 — Typed errors](06-typed-errors.md) — `Data.TaggedError` is built on the same `StructuralPrototype` chain as `Data.Class`; every tagged error participates in structural equality
+- [Chapter 06 — Typed errors](06-typed-errors.md) — `Data.TaggedError` builds on `Data.Error`, which extends ES `Error` and does not participate in `StructuralPrototype`-based equality.
 - [Chapter 12 — Option and Either](12-option-and-either.md) — Option/Either values from Effect also implement `Equal`; `Equal.equals(Option.some(1), Option.some(1))` is `true`
 - [Chapter 14 — Schema part 1](14-schema-part-1.md) — `Schema.Class` and `Schema.TaggedClass` use `Data.Class` as their base, so they carry structural equality automatically
 - [Chapter 17 — Fibers and structured concurrency](17-fibers-and-concurrency.md)
