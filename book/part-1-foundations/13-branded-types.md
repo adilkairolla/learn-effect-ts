@@ -107,6 +107,8 @@ export const nominal = <A extends Brand<any>>(): Brand.Constructor<A> => {
 }
 ```
 
+The actual source includes a `// @ts-expect-error` directive on the `Object.assign` line — TypeScript can't verify the callable-plus-methods shape statically, so the implementation suppresses the error there. Runtime behavior is sound.
+
 The callable form simply returns its argument unchanged. For a nominal brand, `.option` always returns `Some`, `.either` always returns `Right`, and `.is` always returns `true` — because there is no runtime constraint to check.
 
 The type `T & Brand.Brand<"Name">` works by adding a phantom symbol field to `T`. The `Brand<K>` interface at `repos/effect/packages/effect/src/Brand.ts:56-60` is:
@@ -135,8 +137,10 @@ A file descriptor is a number at runtime, but the platform API never allows you 
 
 It has two overloads:
 
-- **Predicate + failure function:** `Brand.refined<A>(predicate, onFailure)` — takes a boolean predicate and a function that produces `Brand.BrandErrors` when the predicate returns `false`.
-- **Option-returning function:** `Brand.refined<A>(f)` — takes a single function that returns `Option<BrandErrors>`. `None` means valid; `Some(errors)` means invalid.
+- **Overload 1 — single-arg form:** `Brand.refined<A>(f)` where `f(unbranded) => Option<BrandErrors>` returns `None` to accept the value or `Some(errors)` to reject it. The "Option" describes what `f` returns, not what `refined` returns.
+- **Overload 2 — predicate + onFailure:** `Brand.refined<A>(predicate, onFailure)` where `predicate` is a boolean test and `onFailure(unbranded) => BrandErrors` produces the error when the predicate fails.
+
+Either overload yields a `Brand.Constructor<A>` whose call sites support `.either(value)` (returns `Either<A, BrandErrors>`), `.option(value)` (returns `Option<A>`), and `.is(value)` (returns `boolean`).
 
 The constructor object that `refined` returns is identical in shape to `nominal`, but:
 - Calling it as a function throws if validation fails.
