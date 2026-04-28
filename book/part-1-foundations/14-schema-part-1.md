@@ -93,12 +93,16 @@ const guard: (u: unknown) => u is UserType = Schema.is(UserSchema)
  * @category constructors
  * @since 3.10.0
  */
-export function Struct<Fields extends Struct.Fields>(fields: Fields): Struct<Fields>
+// More-specific overload first (matches source order):
 export function Struct<Fields extends Struct.Fields, const Records extends IndexSignature.NonEmptyRecords>(
   fields: Fields,
   ...records: Records
 ): TypeLiteral<Fields, Records>
+// Plain struct overload second:
+export function Struct<Fields extends Struct.Fields>(fields: Fields): Struct<Fields>
 ```
+
+TypeScript resolves overloads top-to-bottom, so the more-specific NonEmptyRecords overload is listed first.
 
 The fields object maps property names to schemas. Every schema is itself typed as `Schema<A, I, R>` where `A` is the decoded type, `I` is the encoded (input) type, and `R` is the requirements context. For primitive schemas like `Schema.String` (defined at `repos/effect/packages/effect/src/Schema.ts:1219-1250` as `class String$ extends make<string>(AST.stringKeyword) {}`), `A`, `I`, and `R` are `string`, `string`, and `never` respectively. The `R` channel matters when a schema uses services — Chapter 15 covers that case.
 
@@ -139,14 +143,15 @@ The `Struct` result also exposes `.pick(...)` and `.omit(...)` methods, which re
  * @since 3.10.0
  */
 export const Class = <Self = never>(identifier: string) =>
-  <Fields extends Struct.Fields>(
-    fieldsOr: Fields | HasFields<Fields>,
-    annotations?: ClassAnnotations<Self, Simplify<Struct.Type<Fields>>>
-  ): [Self] extends [never] ? MissingSelfGeneric<"Class"> : Class<...> =>
+<Fields extends Struct.Fields>(
+  fieldsOr: Fields | HasFields<Fields>,
+  annotations?: ClassAnnotations<Self, Simplify<Struct.Type<Fields>>>
+): [Self] extends [never] ? MissingSelfGeneric<"Class">
+  : Class<Self, Fields, Struct.Encoded<Fields>, Struct.Context<Fields>, Struct.Constructor<Fields>, {}, {}> =>
   makeClass({ kind: "Class", identifier, ... })
 ```
 
-The calling pattern is intentionally curried in two steps:
+The curried call site is `Schema.Class<AppUser>("AppUser")({...fields})` because `Class` returns a function after the identifier argument. The calling pattern is intentionally curried in two steps:
 
 ```ts
 import { Schema } from "effect"
@@ -192,7 +197,7 @@ export const TaggedClass = <Self = never>(identifier?: string) =>
     tag: Tag,
     fieldsOr: Fields | HasFields<Fields>,
     annotations?: ClassAnnotations<...>
-  ): [Self] extends [never] ? MissingSelfGeneric<"TaggedClass", `"Tag", `> : TaggedClass<Self, Tag, ...> => { ... }
+  ): [Self] extends [never] ? MissingSelfGeneric<"TaggedClass", `"Tag", `> : TaggedClass<Self, Tag, { readonly _tag: tag<Tag> } & Fields> => { ... }
 ```
 
 The pattern has three steps in the curried call:
@@ -224,12 +229,12 @@ The entry points re-exported from `ParseResult` and defined in `Schema` (`repos/
 
 - `Schema.decodeUnknown(schema)(input)` — returns `Effect<A, ParseError, R>`. Safe, composable with `Effect.gen`. Defined at `repos/effect/packages/effect/src/Schema.ts:561-568`.
 - `Schema.decodeUnknownSync(schema)(input)` — synchronous, throws `ParseError` on failure. Re-exported from `repos/effect/packages/effect/src/ParseResult.ts:464-467`. Use in scripts and tests.
-- `Schema.decodeUnknownEither(schema)(input)` — returns `Either<A, ParseError>`. Useful when you want to handle failure without lifting into Effect. Re-exported from `repos/effect/packages/effect/src/ParseResult.ts:482-486`.
+- `Schema.decodeUnknownEither(schema)(input)` — returns `Either<A, ParseResult.ParseIssue>` synchronously. The Either variant returns the raw `ParseIssue` (not wrapped in `ParseError`) — see Part D for the distinction. Defined at `repos/effect/packages/effect/src/ParseResult.ts:482-486`.
 - `Schema.decodeUnknownOption(schema)(input)` — returns `Option<A>`. Use when the error detail does not matter, only presence.
 
 **Decoding already-typed input:**
 
-- `Schema.decode(schema)(input)` — accepts the encoded type `I` (not `unknown`). Defined at `repos/effect/packages/effect/src/Schema.ts:599-602`. When `I` and `A` differ (a transform schema), this converts `I → A`. When they are the same (a pure struct), it validates.
+- `Schema.decode(schema)(input)` — a statically-typed alias of `decodeUnknown`. The runtime behavior is identical; only the input type narrows from `unknown` to the encoded type `I`. Use `decode` when you already have a value typed as `I` and want compile-time enforcement; use `decodeUnknown` for raw inputs from JSON parses, fetch responses, etc. Defined at `repos/effect/packages/effect/src/Schema.ts:599-602`.
 
 **Encoding:**
 
