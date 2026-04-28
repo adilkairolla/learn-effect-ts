@@ -102,7 +102,7 @@ export const gen: {
 
 The callback receives one argument conventionally named `_` or `resume` — the `Adapter`. You almost never use this adapter directly because modern TypeScript projects rely on `yield*` alone, but it is the value that was historically used in older Effect versions for `yield*(_(someEffect))` patterns. Today you write `yield* someEffect` directly and TypeScript infers correctly.
 
-The `Adapter` interface is defined at `repos/effect/packages/effect/src/Effect.ts:2782-2793`:
+The `Adapter` interface is defined at `repos/effect/packages/effect/src/Effect.ts:2782-3042 — the Adapter interface (only the first two overloads are reproduced here)`:
 
 ```ts
 export interface Adapter {
@@ -271,6 +271,8 @@ declare const getPosts: (userId: string) => Effect.Effect<Post[], FetchPostsErro
 // Effect.fn wraps the generator with a tracing span named "loadUserDashboard".
 // Every call shows up as a named span in distributed traces (Chapter 33).
 const loadUserDashboard = Effect.fn("loadUserDashboard")(
+  // Effect.fn's complex union return type sometimes overwhelms TS's generator
+  // inference; using `any` for the yield/next slots is the idiomatic workaround.
   function* (userId: string): Generator<
     any,
     Dashboard,
@@ -342,7 +344,7 @@ const program = Effect.gen(function* () {
 })
 ```
 
-**`yield* someOption` / `yield* someEither`** — `Option.None` fails with `Cause.NoSuchElementException`; `Either.Left(e)` fails with `e`. Both `Option` and `Either` implement `EffectPrototype` and are directly yieldable. Chapter 12 covers bridging Option/Either into Effect in full.
+**`yield* someOption` / `yield* someEither`** — `Option.None` fails with `Cause.NoSuchElementException`; `Either.Left(e)` fails with `e`. Both `Option` and `Either` implement `EffectPrototype` and are directly yieldable. Chapter 12 covers bridging Option/Either into Effect in full. Note: `Option.Some<A>` is typed `extends Effect<A, Cause.NoSuchElementException>`, so the gen block's `E` channel will include `NoSuchElementException` whenever you `yield*` an Option — even if the runtime path can't actually fail. This is a typing artifact, not a runtime concern.
 
 ```ts
 import { Effect, Option } from "effect"
@@ -423,7 +425,7 @@ const good = Effect.gen(function* () {
 
 ### Using `try/catch` inside `Effect.gen` to catch `yield*` errors
 
-When a `yield*`ed Effect fails, the error short-circuits the generator and surfaces in the `E` channel of the resulting Effect. A `try/catch` around a `yield*` will appear to work for defects (thrown JavaScript errors) but will not catch typed Effect failures — those are signalled through the generator's return mechanism, not through JS exceptions.
+When a `yield*`ed Effect fails, the error short-circuits the generator and surfaces in the `E` channel of the resulting Effect. A `try/catch` around a `yield*` will appear to work for defects (thrown JavaScript errors) but will not catch typed Effect failures. The Effect runtime drives the generator by calling `iterator.next(value)` and never `iterator.throw()`. When a `yield*`-ed effect fails, the runtime extracts the failure and returns it without re-entering the generator — so any `try/catch` wrapped around `yield*` in the generator body is bypassed entirely. See `repos/effect/packages/effect/src/internal/fiberRuntime.ts` near the `OP_ITERATOR` handler (lines 192-211) for this behaviour.
 
 ```ts
 import { Effect } from "effect"
@@ -449,14 +451,14 @@ const good = Effect.gen(function* () {
 
 ### Mixing `await` inside `Effect.gen`
 
-Generator functions and async functions are different JavaScript features. A `function*` generator cannot `await`; the `await` keyword is only valid inside `async function`. Using `await` inside a `function*` body is a runtime error or a no-op depending on the JavaScript engine version.
+Generator functions and async functions are different JavaScript features. A `function*` generator cannot `await`; the `await` keyword is only valid inside `async function`. TypeScript and every modern JavaScript engine reject this as a SyntaxError. There is no fallback behavior to debug — the program won't compile.
 
 ```ts
 import { Effect } from "effect"
 
 // Wrong: await is not valid inside a generator function.
 const bad = Effect.gen(function* () {
-  const data = await fetch("/api/items").then((r) => r.json()) // SyntaxError or wrong behavior
+  const data = await fetch("/api/items").then((r) => r.json()) // TypeScript and every modern JavaScript engine reject this as a SyntaxError. There is no fallback behavior to debug — the program won't compile.
   return data
 })
 
@@ -480,6 +482,7 @@ const good = Effect.gen(function* () {
 - [Chapter 06 — Typed errors](06-typed-errors.md) — error short-circuiting in `gen` and `Effect.catchTag` for recovery
 - [Chapter 12 — Option and Either](12-option-and-either.md) — yielding `Option` and `Either` directly; `None` and `Left` semantics in a gen block
 - [Chapter 17 — Fibers and structured concurrency](17-fibers-and-concurrency.md) — concurrency options on `Effect.all`; how parallel fibers are structured
+- [Chapter 33 — Observability with @effect/opentelemetry](../part-2-tour/33-opentelemetry.md) — where Effect.fn's auto-traced spans become visible
 - [Chapter 34 — Schedule](34-schedule.md) (Part II) — `Schedule.exponential`, `recurs`, `spaced`, and other schedules used with `retry` and `repeat`
 - [Patterns Catalog: Effect.gen + yield*](../../research/02-patterns-catalog.md#effectgen--yield)
 - [Patterns Catalog: Effect.fn (named effect functions with auto-tracing)](../../research/02-patterns-catalog.md#effectfn-named-effect-functions-with-auto-tracing)
