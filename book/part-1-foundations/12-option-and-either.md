@@ -92,7 +92,7 @@ export type Option<A> = None<A> | Some<A>
 
 - `Option.map(opt, f)` — apply `f` to the value inside `Some`, leave `None` unchanged. `repos/effect/packages/effect/src/Option.ts:923-929`.
 - `Option.flatMap(opt, f)` — like `map`, but `f` itself returns an `Option`. If either step is `None`, the whole result is `None`. `repos/effect/packages/effect/src/Option.ts:1047-1053`.
-- `Option.match(opt, { onNone, onSome })` — pattern-match: call `onNone()` for absence, `onSome(value)` for presence. The dual-style overload also accepts `(onNone, onSome)` as the first argument. `repos/effect/packages/effect/src/Option.ts:299-314`.
+- `Option.match(opt, { onNone, onSome })` — pattern-match: call `onNone()` for absence, `onSome(value)` for presence. Only the object form `{ onNone, onSome }` is supported. `repos/effect/packages/effect/src/Option.ts:299-314`.
 - `Option.getOrElse(opt, onNone)` — extract the value or compute a fallback. `repos/effect/packages/effect/src/Option.ts:500-506`.
 - `Option.getOrNull(opt)` — extract the value or return `null`. Useful at an interop boundary leaving the Option world. `repos/effect/packages/effect/src/Option.ts:753`.
 - `Option.getOrThrow(opt)` — extract or throw an `Error`. Use only in test code or initialization paths where absence is truly a programmer error. `repos/effect/packages/effect/src/Option.ts:887`.
@@ -119,7 +119,7 @@ This means the current order `Either<A, E>` is acknowledged as non-standard even
 
 - `Either.right(value)` — success. `repos/effect/packages/effect/src/Either.ts:120`.
 - `Either.left(error)` — failure. `repos/effect/packages/effect/src/Either.ts:138`.
-- `Either.fromNullable(value, onNullable)` — dual function: if `value` is non-null, wraps in `Right`; otherwise calls `onNullable(value)` to produce the `Left` value. `repos/effect/packages/effect/src/Either.ts:156-163`.
+- `Either.fromNullable(value, onNullable)` — dual function: if `value` is non-null, wraps in `Right`; otherwise calls `onNullable(value)` (where `value` is the input, possibly null/undefined) to produce the Left value when the input is nullable. `repos/effect/packages/effect/src/Either.ts:156-163`.
 
 **Combinators:**
 
@@ -134,7 +134,7 @@ This means the current order `Either<A, E>` is acknowledged as non-standard even
 
 ### Part C — Bridging Option/Either into Effect
 
-Both `Option<A>` and `Either<A, E>` implement `EffectPrototype` via a module augmentation in the `effect` package. That makes them directly yieldable inside `Effect.gen` — no adapter function needed. This is **the** idiom; there is no `Effect.fromOption` or `Effect.fromEither` named export. Searching for those names will return nothing.
+Both `Option<A>` and `Either<A, E>` are bridged to the Effect runtime through two coordinated mechanisms. **At runtime:** `EffectPrototype` is spread into `Option`'s `CommonProto` (`repos/effect/packages/effect/src/internal/option.ts:15`) and `Either`'s `CommonProto` (`repos/effect/packages/effect/src/internal/either.ts:21`), so instances actually behave like Effects when the runtime walks them. **At compile time:** `Effect.ts:186-218` uses TypeScript's `declare module` augmentation to extend `Some`/`None`/`Right`/`Left` interfaces with `extends Effect<A, E>`, which is what makes `yield*` type-check. That makes them directly yieldable inside `Effect.gen` — no adapter function needed. This is **the** idiom; there is no `Effect.fromOption` or `Effect.fromEither` named export. Searching for those names will return nothing.
 
 **`yield* someOption` — lift an Option into Effect:**
 
@@ -294,6 +294,24 @@ const label = (opt: Option.Option<number>) =>
   Option.match(opt, { onNone: () => "empty", onSome: (n) => `has ${n}` })
 ```
 
+**`Option.liftPredicate` / `Either.liftPredicate` — lift a value when a predicate holds:**
+
+If you are migrating from fp-ts and reaching for `fromPredicate`, the equivalent in Effect is `Option.liftPredicate(predicate)` (`repos/effect/packages/effect/src/Option.ts:1805`) and `Either.liftPredicate(predicate, onFalse)` (`repos/effect/packages/effect/src/Either.ts:439`). Both lift a value into `Some`/`Right` when the predicate holds, otherwise into `None` / `Left(onFalse(value))`.
+
+```ts
+import { Either, Option } from "effect"
+const positiveOpt = Option.liftPredicate((n: number) => n > 0)
+positiveOpt(5)   // Some(5)
+positiveOpt(-1)  // None
+
+const positiveEither = Either.liftPredicate(
+  (n: number) => n > 0,
+  (n) => `${n} is not positive`
+)
+positiveEither(5)   // Right(5)
+positiveEither(-1)  // Left("-1 is not positive")
+```
+
 **`Either.right(x)` / `Either.left(e)` — leaf constructors:**
 
 ```ts
@@ -308,7 +326,8 @@ const err: Either.Either<number, string> = Either.left("oops")
 import { Effect, Either, Option } from "effect"
 const program = Effect.gen(function* () {
   const n = yield* Option.some(10)             // binds 10
-  const m = yield* Either.right<number, string>(5) // binds 5
+  const eitherValue: Either.Either<number, string> = Either.right(5)
+  const m = yield* eitherValue                 // binds 5
   return n + m
 })
 ```
@@ -330,8 +349,8 @@ const asEither = Effect.either(fetchUser("u-1"))
 
 ```ts
 import { Either, Exit, Option } from "effect"
-const exitA = Exit.fromOption(Option.some(42))      // Exit<42, void>
-const exitB = Exit.fromEither(Either.right(99))      // Exit<99, never>
+const exitA = Exit.fromOption(Option.some(42))      // Exit<number, void>
+const exitB = Exit.fromEither(Either.right(99))      // Exit<number, never>
 ```
 
 ---
