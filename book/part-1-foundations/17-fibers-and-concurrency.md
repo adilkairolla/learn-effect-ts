@@ -287,7 +287,15 @@ const program: Effect.Effect<void> = Effect.gen(function* () {
   if (Exit.isSuccess(exit)) {
     console.log("All results:", exit.value)
   } else if (Cause.isInterruptedOnly(exit.cause)) {
-    console.log("Interrupted (timeout or parent failure)")
+    // True Cause.Interrupt — parent failure or external interrupt signal
+    console.log("Interrupted (parent failure / external interrupt)")
+  } else if (Cause.failureOption(exit.cause).pipe(
+    // Effect.timeout raises Cause.Fail(TimeoutException), NOT Cause.Interrupt —
+    // so isInterruptedOnly returns false for a timeout.
+    // refs: repos/effect/packages/effect/src/Effect.ts:7027-7030
+    (opt) => opt._tag === "Some" && Cause.isTimeoutException(opt.value)
+  )) {
+    console.log("Timed out (deadline exceeded)")
   } else {
     console.log("Failed:", exit.cause)
   }
@@ -352,6 +360,7 @@ const timeoutExample = Effect.timeout(
 // Wrong — Promise rejection bypasses Effect's Cause machinery;
 // surviving promises are not interrupted; no structured cleanup.
 const wrong = Effect.gen(function* () {
+  // @ts-expect-error: await is not valid inside Effect.gen — see Chapter 05
   const results = await Promise.all([fetchA(), fetchB(), fetchC()])
   return results
 })
