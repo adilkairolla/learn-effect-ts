@@ -94,12 +94,14 @@ export const runSync: <A, E>(effect: Effect<A, E>) => A
 
 It executes the Effect synchronously and returns the result directly as a value of type `A`. No `Promise`, no callback. This is useful in CLIs and scripts where you know every step is synchronous.
 
-The hard constraint: if the Effect contains any asynchronous boundary — any `Effect.promise`, `Effect.tryPromise`, `Effect.async`, or anything that yields a fiber — `runSync` throws at runtime with an `AsyncFiberException`:
+The hard constraint: if the Effect contains any asynchronous boundary — any `Effect.promise`, `Effect.tryPromise`, `Effect.async`, or anything that yields a fiber — `runSync` throws at runtime with a `FiberFailure` whose `Cause` is a `Die` wrapping an `AsyncFiberException`. The display in a `catch (e)` block looks like:
 
 ```
 (FiberFailure) AsyncFiberException: Fiber #0 cannot be resolved synchronously.
 This is caused by using runSync on an effect that performs async work
 ```
+
+The object thrown is always a `FiberFailure` (an `Error` subclass); `e instanceof FiberFailure` is the correct guard, not `e._tag === "AsyncFiberException"`. Internally, `unsafeRunSync` calls `unsafeRunSyncExit`, which returns `Exit.die(asyncFiberException(fiber))` when it encounters an async boundary; `unsafeRunSync` then calls `fiberFailure(cause)` on that `Failure` exit and throws the result (see `repos/effect/packages/effect/src/internal/runtime.ts:159-168` and `268-284`).
 
 The source documents this behavior explicitly in the JSDoc at `repos/effect/packages/effect/src/Effect.ts:12202-12278`. If the Effect can fail, `runSync` throws that failure as a `FiberFailure` as well. The safe alternative for effects that might fail is `runSyncExit`, which returns `Exit<A, E>` without throwing.
 
@@ -134,7 +136,7 @@ export const runCallback: <A, E>(
 ) => Runtime.Cancel<A, E>
 ```
 
-It starts the Effect asynchronously and invokes `options.onExit` with the `Exit<A, E>` value when the Effect completes. It returns a cancellation function you can call to interrupt the fiber from outside. This is the lowest-level runner — the others are built on top of it. In practice, you will reach for `runPromise` almost always; `runCallback` is useful when integrating with older callback-based frameworks or when you need the cancellation handle without creating a fiber reference separately.
+It starts the Effect asynchronously and invokes `options.onExit` with the `Exit<A, E>` value when the Effect completes. It returns a cancellation function you can call to interrupt the fiber from outside. Of the four runners, this is the most flexible primitive — its callback shape can express any output protocol. Internally, however, `runPromise`, `runSync`, and `runFork` do NOT delegate through `runCallback`; all four call `unsafeFork` directly with different output adapters (for example, `unsafeRunPromiseExit` calls `unsafeFork` at `repos/effect/packages/effect/src/internal/runtime.ts:345`, and `unsafeRunCallback` does the same at line 138). In practice, you will reach for `runPromise` almost always; `runCallback` is useful when integrating with older callback-based frameworks or when you need the cancellation handle without creating a fiber reference separately.
 
 ### The `Runtime` and `ManagedRuntime` variants
 
@@ -330,12 +332,12 @@ Effect.runPromise(main).catch(console.error)
 
 ### Calling `runSync` on an Effect that may suspend
 
-`runSync` only works on purely synchronous Effects. If the Effect contains any `tryPromise`, `promise`, `async`, or any combinator that might yield to the event loop, `runSync` throws an `AsyncFiberException` at runtime — a defect, not a typed error, so it will not be caught by typed error handlers.
+`runSync` only works on purely synchronous Effects. If the Effect contains any `tryPromise`, `promise`, `async`, or any combinator that might yield to the event loop, `runSync` throws a `FiberFailure` wrapping a `Die` cause that contains an `AsyncFiberException` — a defect, not a typed error, so it will not be caught by typed error handlers. The correct guard in a `catch` block is `isFiberFailure(e)`, not checking `e._tag`.
 
 ```ts
 import { Effect } from "effect"
 
-// Wrong: this throws at runtime with AsyncFiberException.
+// Wrong: this throws a FiberFailure (wrapping AsyncFiberException) at runtime.
 const bad = Effect.runSync(
   Effect.tryPromise({
     try: () => fetch("/api"),
