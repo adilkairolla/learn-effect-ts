@@ -88,7 +88,7 @@ async function runSession(): Promise<void> {
 }
 ```
 
-This works if `doWork()` is the only code path. But what if `runSession` is called from a larger composition that itself throws before reaching the `finally`? What if a new developer adds an early return? The `clearInterval` call is orphaned. In plain TypeScript, resource ownership is a social contract enforced by code review, not by the type system.
+This works for the synchronous path. But what if `doWork()` spawns a concurrent operation — a `setTimeout` or an unawaited `Promise` — that outlives the `finally` block? The `clearInterval` runs while the orphaned work is still in flight, and that work proceeds without the resource it was relying on. What if a new developer adds an early return? The `clearInterval` call is orphaned. In plain TypeScript, resource ownership is a social contract enforced by code review, not by the type system.
 
 These are not nice-to-haves. They are gaps in the platform's ability to represent programs accurately.
 
@@ -161,14 +161,15 @@ Effect's concurrency model is built on fibers — lightweight, structured thread
 ```ts
 import { Effect } from "effect"
 
-// Acquires a resource; guarantees release even on error or interruption
+// Describes a scoped resource acquisition; the connection is opened when
+// the effect runs and closed automatically when the surrounding Scope ends.
 const withDatabase = Effect.acquireRelease(
   openConnection(),          // acquire
   (conn) => closeConnection(conn)  // release — always runs
 )
 ```
 
-No try/finally, no forgotten cleanup. The structure of the code guarantees the structure of resource lifetimes. The full resource and fiber story is in Chapters 10 and 17.
+No try/finally, no forgotten cleanup. The structure of the code guarantees the structure of resource lifetimes. Chapter 10 (Layer.scoped and Scope) covers the full mechanics of how `Scope` drives acquisition and release. The full resource and fiber story is in Chapters 10 and 17.
 
 ### The `.make` constructor pattern
 
@@ -219,7 +220,7 @@ The pattern is consistent enough that once you know to look for `.make`, you wil
 Here is a small but realistic program: fetch a user by ID, validate the response shape with a schema, and return a typed result. It shows how the three type parameters work together and introduces a schema class with a `.make` constructor.
 
 ```ts
-import { Effect, Schema, Data } from "effect"
+import { Effect, Schema, Data, ParseResult } from "effect"
 
 // Schema.Class gives us a validated constructor
 // We'll cover Schema fully in Chapter 14
@@ -235,13 +236,13 @@ class FetchError extends Data.TaggedError("FetchError")<{
   status: number
 }> {}
 
-class ParseError extends Data.TaggedError("ParseError")<{
+class BadResponseShape extends Data.TaggedError("BadResponseShape")<{
   message: string
 }> {}
 
-// Effect.Effect<User, FetchError | ParseError>
+// Effect.Effect<User, FetchError | BadResponseShape>
 // Note: no R slot (no services required yet — we'll add that in Chapter 08)
-const fetchUser = (id: string): Effect.Effect<User, FetchError | ParseError> =>
+const fetchUser = (id: string): Effect.Effect<User, FetchError | BadResponseShape> =>
   Effect.gen(function* () {
     const response = yield* Effect.tryPromise({
       try: () => fetch(`https://api.example.com/users/${id}`),
@@ -256,13 +257,13 @@ const fetchUser = (id: string): Effect.Effect<User, FetchError | ParseError> =>
 
     const json = yield* Effect.tryPromise({
       try: () => response.json(),
-      catch: (e) => new ParseError({ message: String(e) })
+      catch: (e) => new BadResponseShape({ message: String(e) })
     })
 
-    // Schema.decodeUnknown returns Effect<User, ParseError, never>
+    // Schema.decodeUnknown returns Effect<User, ParseResult.ParseError, never>
     // We'll cover Schema.decode in Chapter 14
     return yield* Schema.decodeUnknown(User)(json).pipe(
-      Effect.mapError((e) => new ParseError({ message: e.message }))
+      Effect.mapError((e) => new BadResponseShape({ message: ParseResult.TreeFormatter.formatErrorSync(e) }))
     )
   })
 
@@ -273,7 +274,7 @@ Effect.runPromise(fetchUser("abc-123")).then(
 )
 ```
 
-Notice what the type of `fetchUser` communicates without any prose documentation: it produces a `User`, it can fail with either a `FetchError` or a `ParseError`, and it requires no external services. Every one of those facts is checked at compile time.
+Notice what the type of `fetchUser` communicates without any prose documentation: it produces a `User`, it can fail with either a `FetchError` or a `BadResponseShape`, and it requires no external services. Every one of those facts is checked at compile time.
 
 ---
 
@@ -313,7 +314,7 @@ import { ManagedRuntime } from "effect"
 const runtime = ManagedRuntime.make(AppLayer)
 ```
 
-**`Schema.TaggedStruct("Tag", fields).make`** — construct a validated tagged struct instance (`repos/effect/packages/effect/src/Schema.ts:3003`):
+**`Schema.TaggedStruct("Tag", fields).make`** — construct a validated tagged struct instance (`repos/effect/packages/effect/src/Schema.ts:3009`):
 
 ```ts
 import { Schema } from "effect"
