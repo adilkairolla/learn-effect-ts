@@ -327,7 +327,9 @@ try {
 }
 ```
 
-The `sql` package uses exactly this idiom for its `Model.Date` schema (`repos/effect/packages/sql/src/Model.ts:346-360`): `transformOrFail` from `Schema.String` to `Schema.DateTimeUtcFromSelf`, with `ParseResult.fail(new ParseResult.Type(ast, s))` on bad input and `ParseResult.succeed(dt)` on success. The `Schema.brand` pattern for identifiers is documented in the same file (`repos/effect/packages/sql/src/Model.ts:85`) with `Schema.Number.pipe(Schema.brand("GroupId"))` as the canonical example.
+The `sql` package uses this idiom for date-only fields (`repos/effect/packages/sql/src/Model.ts:346-360`): a `transformOrFail` from `Schema.String` (the encoded ISO date) to `Schema.DateTimeUtcFromSelf`, decoding via `DateTime.fromString` and stripping the time component with `DateTime.removeTime`. The encode side uses `DateTime.formatIsoDate` to produce the date-only string. The pattern is the same as our `DateFromString` above; the differences are which library type you target and which formatter you use on the encode side.
+
+The `sql` package illustrates the `Schema.brand` pattern in a JSDoc example at `repos/effect/packages/sql/src/Model.ts:85` — `Schema.Number.pipe(Schema.brand("GroupId"))` — and uses live brand definitions throughout the package (e.g., the `EntityId` brand at `repos/effect/packages/cluster/src/EntityId.ts:10`).
 
 ---
 
@@ -524,7 +526,7 @@ When a schema's `R` is non-`never`, every decode and encode call must be run ins
 
 ```ts
 // Right: keep the schema pure; log in the consuming Effect
-import { Effect, Schema } from "effect"
+import { Effect, ParseResult, Schema } from "effect"
 
 const NumberFromStr = Schema.transformOrFail(
   Schema.String,
@@ -533,10 +535,10 @@ const NumberFromStr = Schema.transformOrFail(
     decode: (s, _opts, ast) => {
       const n = Number(s)
       return Number.isNaN(n)
-        ? Schema.ParseResult.fail(new Schema.ParseResult.Type(ast, s))
-        : Schema.ParseResult.succeed(n)
+        ? ParseResult.fail(new ParseResult.Type(ast, s))
+        : ParseResult.succeed(n)
     },
-    encode: (n, _opts, _ast, _a) => Schema.ParseResult.succeed(String(n)),
+    encode: (n, _opts, _ast, _a) => ParseResult.succeed(String(n)),
     strict: true,
   }
 )
