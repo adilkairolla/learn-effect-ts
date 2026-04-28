@@ -764,15 +764,49 @@ export const transform: {
 }
 
 export const transformOrFail: {
+  // data-last (pipeable)
   <To extends Schema.Any, From extends Schema.Any, RD, RE>(
     to: To,
     options: {
-      readonly decode: (fromA: Schema.Type<From>, ...) => Effect.Effect<Schema.Encoded<To>, ParseResult.ParseError, RD>
-      readonly encode: ...
+      readonly decode: (
+        fromA: Schema.Type<From>,
+        options: ParseOptions,
+        ast: AST.Transformation,
+        fromI: Schema.Encoded<From>
+      ) => Effect.Effect<Schema.Encoded<To>, ParseResult.ParseIssue, RD>
+      readonly encode: (
+        toI: Schema.Encoded<To>,
+        options: ParseOptions,
+        ast: AST.Transformation,
+        toA: Schema.Type<To>
+      ) => Effect.Effect<Schema.Type<From>, ParseResult.ParseIssue, RE>
+      readonly strict?: true
     }
-  ): (self: From) => transformOrFail<From, To, RD | RE>
-  ...
+  ): (from: From) => transformOrFail<From, To, RD | RE>
+  // data-first
+  <To extends Schema.Any, From extends Schema.Any, RD, RE>(
+    from: From,
+    to: To,
+    options: {
+      readonly decode: (
+        fromA: Schema.Type<From>,
+        options: ParseOptions,
+        ast: AST.Transformation,
+        fromI: Schema.Encoded<From>
+      ) => Effect.Effect<Schema.Encoded<To>, ParseResult.ParseIssue, RD>
+      readonly encode: (
+        toI: Schema.Encoded<To>,
+        options: ParseOptions,
+        ast: AST.Transformation,
+        toA: Schema.Type<To>
+      ) => Effect.Effect<Schema.Type<From>, ParseResult.ParseIssue, RE>
+      readonly strict?: true
+    }
+  ): transformOrFail<From, To, RD | RE>
 }
+// Note: the error type is ParseResult.ParseIssue (not ParseResult.ParseError).
+// ParseError is the outer wrapper thrown at runtime boundaries (e.g. Schema.decodeUnknownSync);
+// ParseIssue is the lower-level union type used inside transformOrFail callbacks.
 ```
 
 **Where it appears:**
@@ -993,7 +1027,7 @@ export const composite: (left: FiberId, right: FiberId) => Composite
 
 **When to use:** Use `FiberId` when implementing observability or debugging tools — a Supervisor that logs which fiber spawned which, or a trace system that annotates spans with fiber IDs. In most application code you never construct `FiberId` directly; the runtime assigns IDs automatically.
 
-**When NOT to use:** Don't use `FiberId` as an application-level correlation ID — it is a runtime artifact, not a domain concept. For request tracing, use `Effect.withSpan` and the tracer instead.
+**When NOT to use:** Don't use `FiberId` as an application-level correlation ID — it is a runtime artifact, not a domain concept. For correlation across spans, call `Effect.withSpan(name, { attributes: { correlationId } })` once at the entry point and use `Effect.annotateCurrentSpan` to add fields downstream. For correlation in logs, use `Effect.annotateLogs({ correlationId })` once at the entry point — child fibers inherit the annotation automatically. `FiberId` is for runtime introspection (debugging, fiber dump tools), not for business-level request or trace IDs.
 
 **Anti-pattern it replaces:** Thread IDs or task IDs in a thread-pool executor for debugging: `Thread.currentThread().getId()` — `FiberId` provides the same identity concept but for Effect's cooperative fiber scheduler.
 
@@ -1044,7 +1078,33 @@ export const close: (self: CloseableScope, exit: Exit.Exit<unknown, unknown>) =>
 
 **When NOT to use:** Don't use `Scope.make` directly in application code — prefer `Effect.scoped(effect)` which creates, uses, and closes a scope automatically. Don't rely on `Scope.fork` manually; `forkScoped` on a fiber does this for you.
 
-**Anti-pattern it replaces:** `try/finally` blocks for resource cleanup: `const conn = await db.connect(); try { return await query(conn); } finally { await conn.close(); }` — this doesn't compose (you can't add more resources without nesting), and it doesn't handle interruption. `acquireRelease(db.connect(), conn => conn.close())` composes cleanly.
+**Anti-pattern it replaces:** Nested `try/finally` blocks when managing multiple resources together:
+```ts
+// Naive: nesting grows with each resource; release order is manual and error-prone
+const conn = await db.connect()
+try {
+  const file = await fs.open(path, "r")
+  try {
+    return await processRows(conn, file)
+  } finally {
+    await file.close()       // released first
+  }
+} finally {
+  await conn.close()         // released second
+}
+```
+With `Scope`, both resources are registered via `acquireRelease` and released in reverse-acquisition order automatically — no nesting required:
+```ts
+const program = Effect.scoped(
+  Effect.gen(function* () {
+    const conn = yield* Effect.acquireRelease(db.connect(), (c) => c.close())
+    const file = yield* Effect.acquireRelease(fs.open(path, "r"), (f) => f.close())
+    return yield* processRows(conn, file)
+    // Scope closes: file.close() runs first, then conn.close()
+  })
+)
+```
+`acquireRelease` (single resource bracket) and `Scope` (multi-resource lifecycle) are complementary: `acquireRelease` registers one finalizer; `Scope` is the mechanism that sequences all registered finalizers in reverse order on exit.
 
 **Related:** [`Effect.acquireRelease` / `acquireUseRelease`](#effectacquirerelease--acquireuserelease), [`Layer.scoped` (resource layers)](#layerscoped-resource-layers), [`RcRef` and `RcMap`](#rcref-and-rcmap--reference-counted-resources)
 
@@ -1541,11 +1601,11 @@ export const make: <A>(value: A) => Effect.Effect<Ref<A>>
 
 **When to use:** Use `Ref` when you need shared mutable state between fibers — a counter, a flag, a cache entry — where updates must be atomic. `Ref.update`, `Ref.modify`, and `Ref.getAndUpdate` are all atomic operations. It is the standard replacement for a `let` variable in Effect code.
 
-**When NOT to use:** Don't use `Ref` when updates must be effectful (use `SynchronizedRef` for that). Don't use `Ref` when you also need to observe changes — use `SubscriptionRef`. Don't use `Ref` for per-fiber local state — use `FiberRef` instead.
+**When NOT to use:** Don't use `Ref` when updates must be effectful (use `SynchronizedRef` for that). Don't use `Ref` when you also need to observe changes — use `SubscriptionRef`. Don't use `Ref` for per-fiber local state — use `FiberRef` instead. For atomic updates across multiple refs (e.g., transferring balance between two accounts), use `TRef` with `STM.commit` — `Ref` updates can interleave between refs.
 
 **Anti-pattern it replaces:** Shared `let` variables in async code: `let count = 0; await Promise.all([...].map(async () => { count++; }))` — this has a race condition because `count++` is not atomic. `Ref.update(ref, n => n + 1)` is atomic across all concurrent fibers.
 
-**Related:** [`SynchronizedRef` — atomic effectful update](#synchronizedref--atomic-effectful-update), [`SubscriptionRef` — observable Ref](#subscriptionref--observable-ref), [`FiberRef` — fiber-local state](#fiberref--fiber-local-state)
+**Related:** [`SynchronizedRef` — atomic effectful update](#synchronizedref--atomic-effectful-update), [`SubscriptionRef` — observable Ref](#subscriptionref--observable-ref), [`FiberRef` — fiber-local state](#fiberref--fiber-local-state), [`TRef` / `TQueue` / `TMap` / `TSemaphore`](#tref--tqueue--tmap--tsemaphore--stm-aware-variants)
 
 ### `SubscriptionRef` — observable Ref
 
