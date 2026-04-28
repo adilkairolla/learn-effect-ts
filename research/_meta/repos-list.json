@@ -1,0 +1,222 @@
+[
+  {
+    "name": "effect",
+    "full_name": "Effect-TS/effect",
+    "description": "Build production-ready applications in TypeScript",
+    "archived": false,
+    "fork": false,
+    "default_branch": "main",
+    "pushed_at": "2026-04-23T22:25:16Z",
+    "size": 97168
+  },
+  {
+    "name": "website",
+    "full_name": "Effect-TS/website",
+    "description": "Source code for Effect's documentation website",
+    "archived": false,
+    "fork": false,
+    "default_branch": "main",
+    "pushed_at": "2026-04-26T11:20:15Z",
+    "size": 112768
+  },
+  {
+    "name": "figlet",
+    "full_name": "Effect-TS/figlet",
+    "description": "An implementation of a FIGlet font parser and renderer built with Effect",
+    "archived": false,
+    "fork": false,
+    "default_branch": "main",
+    "pushed_at": "2024-01-29T18:24:33Z",
+    "size": 3007
+  },
+  {
+    "name": "language-service",
+    "full_name": "Effect-TS/language-service",
+    "description": "Effect Language Service Plugin (LSP)",
+    "archived": false,
+    "fork": false,
+    "default_branch": "main",
+    "pushed_at": "2026-04-10T08:46:13Z",
+    "size": 19322
+  },
+  {
+    "name": "examples",
+    "full_name": "Effect-TS/examples",
+    "description": "A repository of examples showing how to use Effect",
+    "archived": false,
+    "fork": false,
+    "default_branch": "main",
+    "pushed_at": "2025-10-12T13:34:08Z",
+    "size": 915
+  },
+  {
+    "name": "eslint-plugin",
+    "full_name": "Effect-TS/eslint-plugin",
+    "description": "A set of ESlint and TypeScript rules to work with Effect",
+    "archived": false,
+    "fork": false,
+    "default_branch": "main",
+    "pushed_at": "2025-11-26T20:05:53Z",
+    "size": 274
+  },
+  {
+    "name": "discord-bot",
+    "full_name": "Effect-TS/discord-bot",
+    "description": "The Effect Community's custom Discord bot, built with Effect",
+    "archived": false,
+    "fork": false,
+    "default_branch": "main",
+    "pushed_at": "2026-04-28T03:08:23Z",
+    "size": 914
+  },
+  {
+    "name": "general-issues",
+    "full_name": "Effect-TS/general-issues",
+    "description": null,
+    "archived": false,
+    "fork": false,
+    "default_branch": "main",
+    "pushed_at": "2023-04-26T13:07:02Z",
+    "size": 0
+  },
+  {
+    "name": "docgen",
+    "full_name": "Effect-TS/docgen",
+    "description": "An opinionated documentation generator for Effect projects",
+    "archived": false,
+    "fork": false,
+    "default_branch": "main",
+    "pushed_at": "2026-02-25T01:53:59Z",
+    "size": 1018
+  },
+  {
+    "name": "dtslint",
+    "full_name": "Effect-TS/dtslint",
+    "description": "Effect's custom fork of dtslint used to lint TypeScript declaration (.d.ts) files",
+    "archived": true,
+    "fork": false,
+    "default_branch": "main",
+    "pushed_at": "2024-11-23T16:09:09Z",
+    "size": 87
+  },
+  {
+    "name": "build-utils",
+    "full_name": "Effect-TS/build-utils",
+    "description": "Custom utilities used to assist with building and packaging Effect libraries",
+    "archived": false,
+    "fork": false,
+    "default_branch": "main",
+    "pushed_at": "2025-11-26T20:37:29Z",
+    "size": 561
+  },
+  {
+    "name": "markdown-toc",
+    "full_name": "Effect-TS/markdown-toc",
+    "description": "API and CLI for generating a markdown TOC (table of contents) for a README or any markdown files. Uses Remarkable to parse markdown. Used by NASA/openmct, Prisma, Joi, Mocha, Sass, Prettier, Orbit DB, FormatJS, Raneto, hapijs/code, webpack-flow, docusaurus, release-it, ts-loader, json-server, reactfire, bunyan, husky, react-easy-state, react-snap, ",
+    "archived": false,
+    "fork": true,
+    "default_branch": "master",
+    "pushed_at": "2024-04-10T21:17:47Z",
+    "size": 333
+  },
+  {
+    "name": ".github",
+    "full_name": "Effect-TS/.github",
+    "description": "Organization-wide configuration for Effect-TS",
+    "archived": false,
+    "fork": false,
+    "default_branch": "main",
+    "pushed_at": "2024-04-19T11:30:51Z",
+    "size": 13
+  },
+  {
+    "name": "vscode-extension",
+    "full_name": "Effect-TS/vscode-extension",
+    "description": "Tools to assist development with the Effect Typescript framework",
+    "archived": false,
+    "fork": false,
+    "default_branch": "main",
+    "pushed_at": "2025-12-30T18:31:47Z",
+    "size": 5255
+  },
+  {
+    "name": "codemod",
+    "full_name": "Effect-TS/codemod",
+    "description": "Code mod's for the Effect ecosystem",
+    "archived": false,
+    "fork": false,
+    "default_branch": "main",
+    "pushed_at": "2024-07-23T10:52:14Z",
+    "size": 374
+  },
+  {
+    "name": "content",
+    "full_name": "Effect-TS/content",
+    "description": null,
+    "archived": false,
+    "fork": false,
+    "default_branch": "main",
+    "pushed_at": "2025-05-14T22:53:08Z",
+    "size": 1118
+  },
+  {
+    "name": "monaco-editor",
+    "full_name": "Effect-TS/monaco-editor",
+    "description": "A custom fork of Monaco Editor maintained for the Effect Playground",
+    "archived": false,
+    "fork": true,
+    "default_branch": "main",
+    "pushed_at": "2024-10-26T17:54:26Z",
+    "size": 58298
+  },
+  {
+    "name": "wa-sqlite",
+    "full_name": "Effect-TS/wa-sqlite",
+    "description": "WebAssembly SQLite with support for browser storage extensions",
+    "archived": false,
+    "fork": true,
+    "default_branch": "main",
+    "pushed_at": "2025-08-26T23:49:23Z",
+    "size": 15337
+  },
+  {
+    "name": "meetups",
+    "full_name": "Effect-TS/meetups",
+    "description": "Effect Meetup Group. Submit a talk proposal as an issue.",
+    "archived": false,
+    "fork": false,
+    "default_branch": "main",
+    "pushed_at": "2024-12-08T18:18:46Z",
+    "size": 13
+  },
+  {
+    "name": "effect-smol",
+    "full_name": "Effect-TS/effect-smol",
+    "description": "Core libraries and experimental work for Effect v4",
+    "archived": false,
+    "fork": false,
+    "default_branch": "main",
+    "pushed_at": "2026-04-28T04:52:19Z",
+    "size": 24159
+  },
+  {
+    "name": "effect-days-2025-workshop",
+    "full_name": "Effect-TS/effect-days-2025-workshop",
+    "description": null,
+    "archived": false,
+    "fork": false,
+    "default_branch": "main",
+    "pushed_at": "2025-06-13T03:03:34Z",
+    "size": 542
+  },
+  {
+    "name": "tsgo",
+    "full_name": "Effect-TS/tsgo",
+    "description": "TypeScript-go enhanced with the Effect LSP experience",
+    "archived": false,
+    "fork": false,
+    "default_branch": "main",
+    "pushed_at": "2026-04-22T10:52:21Z",
+    "size": 7539
+  }
+]
