@@ -136,9 +136,9 @@ A common use: polling every five seconds is `Stream.fromSchedule(Schedule.spaced
 // groupByKey: pure key version.
 ```
 
-The resulting `GroupBy<K, V, E, R>` value is not a stream itself — it is a routing table. You call `GroupBy.evaluate` (from `repos/effect/packages/effect/src/GroupBy.ts:61-71`) to run a handler per group and merge the results. The `GroupBy` interface exposes:
+The resulting `GroupBy<K, V, E, R>` value is not a stream itself — it is a routing table. You call `GroupBy.evaluate` (from `repos/effect/packages/effect/src/GroupBy.ts:54-71`) to run a handler per group and merge the results. The `GroupBy` interface exposes:
 
-- `GroupBy.evaluate(f)` — run `f(key, stream)` for every group in parallel; merge results (`repos/effect/packages/effect/src/GroupBy.ts:61-71`).
+- `GroupBy.evaluate(f)` — run `f(key, stream)` for every group in parallel; merge results (`repos/effect/packages/effect/src/GroupBy.ts:54-71`).
 - `GroupBy.first(n)` — only process the first `n` distinct keys; discard the rest (`repos/effect/packages/effect/src/GroupBy.ts:90-93`).
 - `GroupBy.filter(pred)` — include only groups whose key matches the predicate (`repos/effect/packages/effect/src/GroupBy.ts:79-82`).
 
@@ -170,10 +170,10 @@ export interface Channel<
 
 Seven type parameters. The variance annotations (`out` / `in`) enforce composability at compile time: two channels can be piped only if the downstream's `InElem` matches the upstream's `OutElem`, and the downstream's `InErr` matches the upstream's `OutErr`.
 
-**Composing channels with `Channel.pipeTo`** (`repos/effect/packages/effect/src/Channel.ts:1690-1711`):
+**Composing channels with `Channel.pipeTo`** (`repos/effect/packages/effect/src/Channel.ts:1692-1711`):
 
 ```ts
-// repos/effect/packages/effect/src/Channel.ts:1690-1711
+// repos/effect/packages/effect/src/Channel.ts:1692-1711
 // pipeTo: connects two channels — upstream's OutElem must match downstream's InElem.
 export const pipeTo: {
   <OutElem2, OutElem, OutErr2, OutErr, OutDone2, OutDone, Env2>(
@@ -196,7 +196,7 @@ export const read: <In>() => Channel<never, In, Option.Option<never>, unknown, I
 export const write: <OutElem>(out: OutElem) => Channel<OutElem>
 ```
 
-**Running a channel.** `Channel.runScoped` executes a channel that emits no elements and returns its terminal value, registering cleanup with the current `Scope` (`repos/effect/packages/effect/src/Channel.ts:1960-1968`).
+**Running a channel.** `Channel.runScoped` executes a channel that emits no elements and returns its terminal value, registering cleanup with the current `Scope` (`repos/effect/packages/effect/src/Channel.ts:1960-1968`). Note: `Channel.runScoped` was added in Effect 3.11.0 (`@since 3.11.0`); if you are on an older release use `Channel.run` (no scope integration) or `Effect.scoped(Channel.runScoped(...))` after upgrading.
 
 In practice, `Stream` is a `Channel<Chunk<A>, unknown, E, unknown, unknown, unknown, R>` and `Sink` is a `Channel<never, Chunk<In>, E, unknown, A, unknown, R>`. `Stream.run(sink)` is `Channel.pipeTo(stream.channel, sink.channel)` followed by `Channel.runScoped`. The `Stream.pipeThroughChannel` combinator exposes this escape hatch when you need to insert a raw `Channel` into a `Stream` pipeline (`repos/effect/packages/effect/src/Stream.ts:3576-3590`).
 
@@ -223,7 +223,7 @@ export interface Sink<out A, in In = unknown, out L = never, out E = never, out 
 - `Sink.head()` — take only the first element; returns `Option<In>` (`repos/effect/packages/effect/src/Sink.ts:1041-1047`).
 - `Sink.last()` — take only the last element; returns `Option<In>` (`repos/effect/packages/effect/src/Sink.ts:1058-1064`).
 - `Sink.collectAll()` — accumulate every element into a `Chunk<In>`. Equivalent to `Stream.runCollect` (`repos/effect/packages/effect/src/Sink.ts:129`).
-- `Sink.forEach(f)` — execute an effectful function for every element. The composable form of `Stream.runForEach` (`repos/effect/packages/effect/src/Sink.ts:905-912`).
+- `Sink.forEach(f)` — execute an effectful function for every element. The composable form of `Stream.runForEach` (`repos/effect/packages/effect/src/Sink.ts:904-912`).
 
 **Running a stream with a sink.** `Stream.run(sink)` is the general combinator — it accepts any `Sink` and returns the sink's result as an `Effect` (`repos/effect/packages/effect/src/Stream.ts:4108-4121`). The convenience aliases (`runCollect`, `runFold`, `runForEach`, `runCount`) are wrappers around `run` with the corresponding built-in sink baked in.
 
@@ -247,7 +247,7 @@ const result = Stream.fromIterable([1, 2, 3]).pipe(
 
 `Sink.zip` drives both sinks with the same incoming chunks. Neither sink sees elements the other does not. This is the composability that `let acc = 0; let first: number | undefined` hand-rolling cannot match.
 
-**`Stream.pipeThrough`** threads the stream through a sink and re-emits the leftover elements (`L`) as a new stream — useful for parsers that consume a prefix of the input and leave the rest for downstream (`repos/effect/packages/effect/src/Stream.ts:3565-3574`).
+**`Stream.pipeThrough`** threads the stream through a sink and re-emits the leftover elements (`L`) as a new stream — useful for parsers that consume a prefix of the input and leave the rest for downstream (`repos/effect/packages/effect/src/Stream.ts:3563-3574`).
 
 ---
 
@@ -256,7 +256,7 @@ const result = Stream.fromIterable([1, 2, 3]).pipe(
 A realistic back-pressure pipeline: a PubSub of raw user events is subscribed to as a stream, grouped by `userId`, rate-limited per group via a Semaphore (introduced in Chapter 37), enriched, and dispatched to a telemetry sink.
 
 ```ts
-import { Effect, GroupBy, PubSub, Queue, Schedule, Semaphore, Sink, Stream } from "effect"
+import { Effect, GroupBy, PubSub, Queue, Schedule, Sink, Stream } from "effect"
 
 // --- Domain types ---
 
@@ -322,7 +322,7 @@ const pipeline = Effect.gen(function* () {
     ),
 
     // Consume the merged results with a Sink that writes to the telemetry DB.
-    // repos/effect/packages/effect/src/Sink.ts:905-912
+    // repos/effect/packages/effect/src/Sink.ts:904-912
     // repos/effect/packages/effect/src/Stream.ts:4108-4121
     Stream.run(
       Sink.forEach((record: TelemetryRecord) => telemetryDb.insert(record))
@@ -378,7 +378,7 @@ const pollingStream = Stream.fromSchedule(Schedule.spaced("5 seconds")).pipe(
 ```ts
 import { Channel, Chunk } from "effect"
 
-// repos/effect/packages/effect/src/Channel.ts:1690-1711
+// repos/effect/packages/effect/src/Channel.ts:1692-1711
 // Frame a byte stream: read until newline, emit lines.
 const framingChannel = Channel.readWith({
   onInput: (chunk: Uint8Array) =>
