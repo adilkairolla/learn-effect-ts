@@ -120,7 +120,7 @@ All three register **both** `PgClient` and `SqlClient.SqlClient` in the output c
 
 ### The Cache pattern: prepared-statement caching
 
-Several `@effect/sql-*` drivers — `sql-sqlite-node`, `sql-d1`, and others — cache prepared statements using `Cache.make` from `effect`. This is the chapter's introduced pattern.
+Two of the `@effect/sql-*` drivers — `sql-sqlite-node` and `sql-d1` — cache prepared statements using `Cache.make` from `effect`. This is the chapter's introduced pattern.
 
 `Cache.make` constructs an Effect-based memoizing cache with a bounded capacity and a TTL-based eviction policy (`repos/effect/packages/effect/src/Cache.ts:195-208`):
 
@@ -211,7 +211,7 @@ import { SqlClient, SqlSchema } from "@effect/sql"
 import { PgClient } from "@effect/sql-pg"
 import { SqliteClient } from "@effect/sql-sqlite-node"
 import { LibsqlClient } from "@effect/sql-libsql"
-import { Config, Effect, Layer, Schema } from "effect"
+import { Config, Effect, Layer, Option, Schema } from "effect"
 
 // ---------------------------------------------------------------------------
 // Domain types (Chapter 14 — Schema)
@@ -225,15 +225,21 @@ class User extends Schema.Class<User>("User")({
 // ---------------------------------------------------------------------------
 // Data-access layer — depends only on the abstract SqlClient tag
 // ---------------------------------------------------------------------------
+
+// Hoist the findOne schema outside the handler so it is built once, not per call.
+const findUserById = SqlSchema.findOne({
+  Request: Schema.Number,
+  Result: User,
+  execute: (id) =>
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient
+      return yield* sql`SELECT id, email, tenant_id FROM users WHERE id = ${id}`
+    })
+})
+
 const findUser = (id: number) =>
   Effect.gen(function* () {
-    const sql = yield* SqlClient.SqlClient
-    const query = SqlSchema.findOne({
-      Request: Schema.Number,
-      Result: User,
-      execute: (id) => sql`SELECT id, email, tenant_id FROM users WHERE id = ${id}`
-    })
-    return yield* query(id)
+    return yield* findUserById(id)
   })
 
 const upsertUser = (user: typeof User.Encoded) =>
@@ -277,7 +283,7 @@ const program = Effect.gen(function* () {
 
   // Read via same abstract interface
   const user = yield* findUser(1)
-  yield* Effect.log(`Found: ${user?._tag === "Some" ? user.value.email : "not found"}`)
+  yield* Effect.log(`Found: ${Option.isSome(user) ? user.value.email : "not found"}`)
 })
 
 // Entry point: swap layer to change backend
@@ -316,7 +322,7 @@ const DbLive = PgClient.layer({ url: Redacted.make(process.env.DB_URL!), maxConn
 
 ```ts
 import { String } from "effect"
-const DbLive = PgClient.layer({ ..., transformResultNames: String.camelToSnake, transformQueryNames: String.snakeToCamel })
+const DbLive = PgClient.layer({ ..., transformResultNames: String.snakeToCamel, transformQueryNames: String.camelToSnake })
 ```
 
 **4. LISTEN/NOTIFY.** The `PgClient`-specific `listen` method returns a `Stream` of notification payloads:
@@ -428,6 +434,8 @@ SQLite drivers (`sql-sqlite-node`, `sql-sqlite-bun`, `sql-sqlite-do`, `sql-sqlit
 
 - [Chapter 25 — SQL part 1 — the `@effect/sql` abstraction layer](./25-sql-core.md) — the `SqlClient` tag, `sql` template, `SqlSchema`, `SqlResolver`, and `withTransaction` that these drivers implement.
 - [Chapter 09 — Layer: building, merging, and providing services](../part-1-foundations/09-layer.md) — `Layer.scopedContext`, dual-tag registration, and the composition model that all eleven drivers rely on.
+- [Chapter 14 — Schema part 1 — declaring shapes with Struct, Class, and TaggedClass](../part-1-foundations/14-schema-part-1.md) — schema decoding for SQL result rows; `SqlSchema.findOne` wraps it.
+- [Chapter 38 — Config and secrets — typed environment loading](38-config-and-secrets.md) — how `PgClient.layerConfig` consumes `Config.*` values for connection settings.
 - [Chapter 23 — Platform on Node.js — HTTP server, file system, and subprocess](./23-platform-node.md) — `@effect/platform-node` is a peer dependency of `@effect/sql-clickhouse`; `Pool.make` and `KeyedPool` from this chapter are structurally related to connection pool management in server drivers.
 - [Chapter 27 — SQL part 3 — query builders: Drizzle and Kysely integrations](./27-sql-query-builders.md) — type-safe query building on top of the `SqlClient` layer established here.
 - [`Cache.make` / `ScopedCache.make` — effect-based memoization](../../research/02-patterns-catalog.md#cachemake--scopedcachemake--effect-based-memoization) — the pattern introduced in this chapter; used by `sql-sqlite-node` and `sql-d1` for prepared-statement caching.
