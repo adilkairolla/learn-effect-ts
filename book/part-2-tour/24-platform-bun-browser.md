@@ -60,7 +60,8 @@ import { Layer } from "effect"
 
 // BunHttpServer.layer wraps Bun.serve inside a Layer.scoped; the server stops
 // on scope close (SIGINT, SIGTERM, or unhandled defect).
-// repos/effect/packages/platform-bun/src/BunHttpServer.ts:47-53
+// (public facade repos/effect/packages/platform-bun/src/BunHttpServer.ts:47-53;
+//  implementation repos/effect/packages/platform-bun/src/internal/httpServer.ts:66-70)
 const ServerLive = BunHttpServer.layer({ port: 3000 })
 
 const HttpLive = HttpServer.serve(HttpServerResponse.text("Hello from Bun")).pipe(
@@ -89,7 +90,7 @@ const program = Effect.gen(function*() {
 
 // BrowserRuntime.runMain interrupts the root fiber on the `beforeunload` window
 // event, so finalizers (including connection teardown) run on page navigation.
-// repos/effect/packages/platform-browser/src/BrowserRuntime.ts:1-11
+// repos/effect/packages/platform-browser/src/internal/runtime.ts:1-8
 BrowserRuntime.runMain(
   program.pipe(
     Effect.provide(BrowserHttpClient.layerXMLHttpRequest)
@@ -194,12 +195,12 @@ export interface Clipboard {
 }
 ```
 
-`Clipboard.layer` uses `Layer.succeed` with a `make` factory that derives `clear` (as `writeString("")`) and `writeBlob` from the primitives you supply. This reduces the required implementation surface and is a reusable authoring pattern.
+`Clipboard.layer` is the ready-to-use layer: it calls `Layer.succeed(Clipboard, make({...}))` with the `navigator.clipboard` implementation inline, so most applications simply provide it. `make` is the factory used internally and is also exported for users who need to write a custom implementation (for example, a test double or a non-browser clipboard backend).
 
 `BrowserStream` provides typed `Stream` factories over DOM event listeners:
 
 ```ts
-// repos/effect/packages/platform-browser/src/BrowserStream.ts:9-34
+// repos/effect/packages/platform-browser/src/BrowserStream.ts:8-34
 export const fromEventListenerWindow: <K extends keyof WindowEventMap>(
   type: K, options?: ...
 ) => Stream.Stream<WindowEventMap[K]>
@@ -222,7 +223,7 @@ The browser package exports no `FileSystem` layer. There is no stub, no `Effect.
 **RcRef.make** creates a reference-counted handle to one resource:
 
 ```ts
-// repos/effect/packages/effect/src/RcRef.ts:69-109
+// repos/effect/packages/effect/src/RcRef.ts:68-109
 export const make: <A, E, R>(
   options: {
     readonly acquire: Effect.Effect<A, E, R>
@@ -378,7 +379,7 @@ const uploadImage = (cacheName: string, file: File) =>
 
     const response = yield* client.execute(
       HttpClientRequest.post("/api/images").pipe(
-        HttpClientRequest.uint8ArrayBody(body, "application/octet-stream")
+        HttpClientRequest.bodyUint8Array(body, "application/octet-stream")
       )
     )
     const url = yield* response.text
@@ -441,7 +442,7 @@ const WorkerLive = BrowserWorker.layer((id) => new Worker("/worker.js"))
 
 ```ts
 import { BrowserStream } from "@effect/platform-browser"
-// repos/effect/packages/platform-browser/src/BrowserStream.ts:9-20
+// repos/effect/packages/platform-browser/src/BrowserStream.ts:8-20
 const clicks = BrowserStream.fromEventListenerWindow("click")
 ```
 
@@ -449,7 +450,7 @@ const clicks = BrowserStream.fromEventListenerWindow("click")
 
 ```ts
 import { Effect, RcRef } from "effect"
-// repos/effect/packages/effect/src/RcRef.ts:69-109
+// repos/effect/packages/effect/src/RcRef.ts:68-109
 const clipboardRef = yield* RcRef.make({
   acquire: Effect.sync(() => navigator.clipboard),
   idleTimeToLive: "5 seconds"
