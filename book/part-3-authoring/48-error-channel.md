@@ -14,7 +14,7 @@ Chapter 47 left `CacheService` with a placeholder — `type CacheError = unknown
 
 This chapter introduces `CacheError` as a proper discriminated union of three `Data.TaggedError` variants: `Missing`, `Backend`, and `Encoding`. Each variant carries its own typed payload. Together they replace `CacheError = unknown` in `src/Cache.ts`, giving the TypeScript compiler — and every IDE that reads the generated declaration files — exact information about what can go wrong at each method boundary.
 
-The `Data.TaggedError` choice is load-bearing. It extends the JavaScript built-in `Error` class (via `core.YieldableError`, covered below), which means stack traces are captured and browser devtools display these errors correctly. It also implements Effect's `YieldableError` interface, which means an instance can be yielded directly inside `Effect.gen` — `yield* new Missing({ key })` — without wrapping it in `Effect.fail`. Both of those properties matter for the downstream chapters that write the actual Layer implementations.
+The `Data.TaggedError` choice is load-bearing. `Data.TaggedError("Tag")<Fields>` returns a class that extends `Data.Error`, which extends `core.YieldableError`, which extends the native `globalThis.Error`. This means stack traces are captured and browser devtools display these errors correctly. It also implements Effect's `YieldableError` interface, which means an instance can be yielded directly inside `Effect.gen` — `yield* new Missing({ key })` — without wrapping it in `Effect.fail`. Both of those properties matter for the downstream chapters that write the actual Layer implementations.
 
 There is a secondary design goal: the error variants stay narrow. Each carries only the information its callers need to make a recovery decision. `Missing` carries the key so a logging handler knows which entry was absent. `Backend` carries the raw `cause` and the name of the failing `operation` so an observability layer can tag metrics by operation. `Encoding` carries a `ParseResult.ParseIssue` so a diagnostic layer can format the parse tree without any string-based guessing. Narrow, discriminated, typed: that is what Effect's error channel is for.
 
@@ -125,25 +125,31 @@ Calling `Data.TaggedError("Missing")` returns a constructor class. Passing it a 
 
 The `_tag` field is auto-set by the constructor body at line 585: `readonly _tag = tag`. You never pass `_tag` as a constructor argument — the type parameter at line 581 explicitly excludes it (`P extends "_tag" ? never : P`). So `new Missing({ key: "user:42" })` produces an instance with `._tag === "Missing"` and `.key === "user:42"`.
 
-#### Extends ES `Error` — not `Data.Structural`
+#### Extends ES `Error` — with structural equality via `StructuralCommitPrototype`
 
-A common misconception: `Data.TaggedError` is not the same as `Data.Class` or `Data.Struct`. `Data.Class` and `Data.Struct` implement `Equal.Equal` and `Hash.Hash` via `Structural` prototype methods, giving them value-equality semantics — two instances with the same fields are considered equal. `Data.TaggedError` extends `core.YieldableError` (which extends ES `Error`), not `Structural`. Two distinct `Missing` instances with the same `key` are **not** structurally equal by default. They are separate JavaScript objects with separate identity.
+A common point of confusion: `Data.TaggedError` is not the same as `Data.Class` or `Data.Struct`, but it does share their equality semantics. Calling `Data.TaggedError("Missing")` produces a class that extends `Data.Error`, which extends `core.YieldableError` (see `repos/effect/packages/effect/src/internal/core.ts:2251`), which extends the native `globalThis.Error`. Crucially, `core.YieldableError` has `StructuralCommitPrototype` assigned to its prototype. `StructuralCommitPrototype` spreads `StructuralPrototype` (see `repos/effect/packages/effect/src/internal/effectable.ts:114-116`), which implements `Equal.Equal` and `Hash.Hash` with structural field comparison. This means two `Missing` instances constructed with the same `key` are equal under `Equal.equals` — `Equal.equals(new Missing({ key: "user:42" }), new Missing({ key: "user:42" }))` returns `true`.
 
-This matters when writing test assertions. If you write:
+This matters when writing test assertions. The distinction is not about whether structural equality exists — it does — but about which comparison operator you use. If you write:
 
 ```ts
 expect(error).toEqual(new Missing({ key: "user:42" }))
 ```
 
-Vitest's `toEqual` performs a deep structural comparison that will pass regardless of `Equal.Equal`. But if you write:
+Vitest's `toEqual` performs a deep structural comparison and will pass. If you use Effect's own equality:
+
+```ts
+Equal.equals(error, new Missing({ key: "user:42" }))  // true — structural equality
+```
+
+that also returns `true`. But if you write:
 
 ```ts
 expect(error).toBe(new Missing({ key: "user:42" }))
 ```
 
-that will fail because `toBe` uses `===` (reference equality), and these are two different object instances. This is standard ES `Error` behaviour — Effect does not change it for `TaggedError`.
+that will fail because `toBe` uses `===` (reference equality), and these are two distinct heap objects regardless of their structural equality. The pedagogical takeaway: use `toEqual` for deep comparison or `Equal.equals` for the Effect-aware structural comparison; `toBe` is reference-only and will always fail when comparing two separately constructed error instances.
 
-`YieldableError` is declared at `repos/effect/packages/effect/src/Cause.ts:305-317`. Its JSDoc (lines 305–309) reads: _"Represents an error object that can be yielded in `Effect.gen`."_ The interface at lines 311–316 shows the four type IDs it satisfies — `Effect`, `Stream`, `Sink`, and `Channel` — meaning a `TaggedError` instance is a valid "Effect that fails immediately with itself" across all four channel types. That is what makes `yield* new Missing({ key })` work without `Effect.fail`.
+`YieldableError` is declared at `repos/effect/packages/effect/src/Cause.ts:305-326`. Its JSDoc (lines 305–309) reads: _"Represents an error object that can be yielded in `Effect.gen`."_ The interface at lines 311–316 shows the four type IDs it satisfies — `Effect`, `Stream`, `Sink`, and `Channel` — meaning a `TaggedError` instance is a valid "Effect that fails immediately with itself" across all four channel types. That is what makes `yield* new Missing({ key })` work without `Effect.fail`.
 
 #### The `ParseResult` import
 
