@@ -111,7 +111,7 @@ The template literal ``sql`...${email}...` `` produces a `Statement<User>` where
 export interface SqlClient extends Constructor { ... }
 ```
 
-The `SqlClient.SqlClient` tag (`repos/effect/packages/sql/src/SqlClient.ts:74-78`) is a `Context.Tag<SqlClient, SqlClient>`. Drivers publish their concrete implementations as `Layer.scoped(SqlClient.SqlClient, ...)`, so application code never imports a driver directly. This is the same Tag-and-Layer discipline from Chapter 08 and 09 applied to databases — swap the Layer at the entry point, the query code is unchanged.
+`SqlClient.SqlClient` is a `Tag<SqlClient, SqlClient>` created via `Context.GenericTag` (`internal/client.ts:23`); drivers publish their implementations as `Layer.scoped(SqlClient.SqlClient, ...)`, so application code never imports a driver directly. This is the same Tag-and-Layer discipline from Chapter 08 and 09 applied to databases — swap the Layer at the entry point, the query code is unchanged.
 
 The interface carries four operations beyond the template DSL:
 
@@ -119,7 +119,7 @@ The interface carries four operations beyond the template DSL:
 - `reserve` — acquires a raw `Connection` from the pool (needed for driver-level operations)
 - `reactive` / `reactiveMailbox` — live-query helpers backed by `@effect/experimental`'s `Reactivity` service
 
-`SqlClient.make` (`repos/effect/packages/sql/src/SqlClient.ts:107-111`) is what driver authors call to construct the concrete service. It takes a `MakeOptions` record with an `acquirer`, a `Compiler`, transaction SQL strings, and an optional `transformRows` callback. Application code never calls `make` directly.
+`SqlClient.make` (`repos/effect/packages/sql/src/SqlClient.ts:107-111`) is what driver authors call to construct the concrete service. It takes a `MakeOptions` record with an `acquirer`, a `Compiler`, transaction SQL strings, `spanAttributes: ReadonlyArray<readonly [string, unknown]>` for tracing, and an optional `transformRows` callback. Application code never calls `make` directly.
 
 ### The `sql\`...\`` template-literal DSL
 
@@ -198,7 +198,7 @@ The stream is backed by `SqlStream.asyncPauseResume` (`repos/effect/packages/sql
 
 ### Migrations
 
-`Migrator` (`repos/effect/packages/sql/src/Migrator.ts:69-89`) is a driver-independent migration runner. You give it a `Loader<R>` — an `Effect<ReadonlyArray<ResolvedMigration>, MigrationError, R>` — and it creates a migrations table if needed, loads applied migration IDs, and runs unapplied migrations in order inside a transaction. Driver packages supply their own loaders (file-system, bundled, etc.). `MigrationError` (`repos/effect/packages/sql/src/Migrator.ts:53-67`) carries a `reason` discriminant (`"bad-state" | "import-error" | "failed" | "duplicates" | "locked"`) so you can `Effect.catchTag("MigrationError", ...)` and then switch on `reason` for fine-grained recovery.
+`Migrator` (`repos/effect/packages/sql/src/Migrator.ts:69-89`) is a driver-independent migration runner. It takes a `Loader<R>` — an `Effect<ReadonlyArray<ResolvedMigration>, MigrationError, R>` — creates a migrations table if needed, and runs unapplied migrations in order inside a transaction. `MigrationError` (`repos/effect/packages/sql/src/Migrator.ts:53-67`) carries a `reason` discriminant (`"bad-state" | "import-error" | "failed" | "duplicates" | "locked"`) for fine-grained recovery via `Effect.catchTag`.
 
 ### Request batching with `SqlResolver`
 
@@ -219,7 +219,7 @@ The core types live in the `effect` package:
 
 **`SqlResolver.grouped`** (`repos/effect/packages/sql/src/SqlResolver.ts:258-337`) — groups results by a key extracted from each result row. Use this for one-to-many relationships (posts by author ID).
 
-**`SqlResolver.findById`** (`repos/effect/packages/sql/src/SqlResolver.ts:339-416`) — the most common pattern. Each request is an ID; each result is `Option<A>`. The resolver uses a `MutableHashMap` to route each result back to the correct requesting fiber even when the database returns rows in arbitrary order. Absent IDs get `Option.none()` — no `ResultLengthMismatch` risk.
+**`SqlResolver.findById`** (`repos/effect/packages/sql/src/SqlResolver.ts:339-416`) — the most common pattern. Each request is an ID; each result is `Option<A>`. Uses a `MutableHashMap` to route results back to the correct fiber regardless of database return order; absent IDs get `Option.none()` without `ResultLengthMismatch`.
 
 **`SqlResolver.void`** (`repos/effect/packages/sql/src/SqlResolver.ts:465-473`) — batches side-effecting mutations (bulk deletes, bulk status updates) that return no result.
 
@@ -232,8 +232,10 @@ Each resolver exposes a `.execute(input)` method that returns `Effect<A, E | Par
 A `UserRepository` service with three operations: `findById` (batched), `findByEmail` (simple), and `insert`. The repository is a `Layer` that depends on `SqlClient.SqlClient`.
 
 ```ts
-import { SqlClient, SqlResolver, SqlSchema } from "@effect/sql"
-import { Context, Effect, Layer, Option, Schema } from "effect"
+import { SqlClient, SqlResolver, SqlSchema, SqlError } from "@effect/sql"
+import { Context, Effect, Layer, Option, ParseResult, Schema } from "effect"
+
+type ParseError = ParseResult.ParseError
 
 // ── Domain model (Schema from Chapter 14) ──────────────────────────────────
 
@@ -252,9 +254,9 @@ class NewUser extends Schema.Class<NewUser>("NewUser")({
 // ── Service interface ───────────────────────────────────────────────────────
 
 interface UserRepository {
-  readonly findById: (id: number) => Effect.Effect<Option.Option<User>, never, never>
-  readonly findByEmail: (email: string) => Effect.Effect<Option.Option<User>, never, never>
-  readonly insert: (user: NewUser) => Effect.Effect<User, never, never>
+  readonly findById: (id: number) => Effect.Effect<Option.Option<User>, ParseError | SqlError, never>
+  readonly findByEmail: (email: string) => Effect.Effect<Option.Option<User>, ParseError | SqlError, never>
+  readonly insert: (user: NewUser) => Effect.Effect<User, ParseError | SqlError, never>
 }
 
 class UserRepo extends Context.Tag("UserRepository")<UserRepo, UserRepository>() {}
@@ -318,7 +320,7 @@ const program = Effect.gen(function* () {
 )
 ```
 
-The three `repo.findById` calls each go through `SqlResolver.findById`, which uses `RequestResolver.makeBatched` under the hood. `Effect.withRequestBatching(true)` signals the Effect runtime to collect all outstanding `Effect.request` calls before dispatching — so all three ID lookups collapse into one `SELECT ... WHERE id = ANY($1)` query. The callers see `Option<User>` and never know a batch happened.
+`Effect.withRequestBatching(true)` signals the runtime to collect all outstanding `Effect.request` calls before dispatching — so the three concurrent `findById` calls collapse into one `SELECT ... WHERE id = ANY($1)` query. Callers see `Option<User>` and are unaware a batch happened.
 
 ---
 
@@ -415,35 +417,8 @@ const migrationLoader = Effect.succeed([
 ])
 
 const MigratorLive = Layer.effectDiscard(
-  Migrator.make({})(({ loader: migrationLoader }))
+  Migrator.make({})({ loader: migrationLoader })
 )
-```
-
-**Dialect-conditional SQL with `sql.onDialect`:**
-
-```ts
-import { SqlClient } from "@effect/sql"
-import { Effect } from "effect"
-
-const upsertUser = (email: string, name: string) =>
-  Effect.flatMap(SqlClient.SqlClient, (sql) =>
-    sql.onDialect({
-      pg: () =>
-        sql`INSERT INTO users (email, name) VALUES (${email}, ${name})
-            ON CONFLICT (email) DO UPDATE SET name = EXCLUDED.name`,
-      sqlite: () =>
-        sql`INSERT OR REPLACE INTO users (email, name) VALUES (${email}, ${name})`,
-      mysql: () =>
-        sql`INSERT INTO users (email, name) VALUES (${email}, ${name})
-            ON DUPLICATE KEY UPDATE name = VALUES(name)`,
-      mssql: () =>
-        sql`MERGE users AS t USING (SELECT ${email} email, ${name} name) AS s
-            ON t.email = s.email WHEN MATCHED THEN UPDATE SET t.name = s.name
-            WHEN NOT MATCHED THEN INSERT (email, name) VALUES (s.email, s.name)`,
-      clickhouse: () =>
-        sql`INSERT INTO users (email, name) VALUES (${email}, ${name})`
-    })
-  )
 ```
 
 ---
