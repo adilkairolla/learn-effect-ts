@@ -117,10 +117,10 @@ export interface Command<Name extends string, R, E, A>
 
 Two facts from this interface are consequential. First, `Command` extends `Pipeable`, so every combinator ships in both data-first and data-last form (covered in Chapter 04). Second — and this is the headline design decision — `Command` extends `Effect<A, never, Command.Context<Name>>`. A command is simultaneously a description and an effect. A subcommand handler can do `yield* parentCommand` to read the parent's parsed config, and TypeScript tracks that requirement in the `R` type parameter. When `Command.withSubcommands` wires the parent to its children, it subtracts `Command.Context<Name>` from each child's `R`, so the requirement is satisfied without the caller doing anything.
 
-**`Command.make`** is the primary constructor (`repos/effect/packages/cli/src/Command.ts:207–239`). It takes a name, an optional config object, and an optional handler. The config object's values must be `Args<A>` or `Options<A>` instances; the `ParseConfig<Config>` mapped type at `repos/effect/packages/cli/src/Command.ts:80–89` recursively maps each field to its parsed type `A`, so the handler parameter is always fully typed:
+**`Command.make`** is the primary constructor (`repos/effect/packages/cli/src/Command.ts:207–239`). It takes a name, an optional config object, and an optional handler. The config object's values must be `Args<A>` or `Options<A>` instances; the `ParseConfig<Config>` mapped type at `repos/effect/packages/cli/src/Command.ts:76–89` recursively maps each field to its parsed type `A`, so the handler parameter is always fully typed:
 
 ```ts
-// repos/effect/packages/cli/src/Command.ts:207-239
+// repos/effect/packages/cli/src/Command.ts:207-239 (ParseConfig: Command.ts:76-89)
 export const make: {
   <Name extends string>(name: Name): Command<Name, never, never, {}>
 
@@ -165,7 +165,7 @@ Combinators transform the arity and optionality: `Args.repeated` produces `Args<
 
 - `Options.text("output")` — `--output <value>` (`repos/effect/packages/cli/src/Options.ts:331–335`)
 - `Options.integer("depth")` — `--depth <integer>` (`repos/effect/packages/cli/src/Options.ts:299–303`)
-- `Options.boolean("verbose")` — `--verbose`, `--no-verbose` (`repos/effect/packages/cli/src/Options.ts:145–150`)
+- `Options.boolean("verbose")` — `--verbose` (negation via `--no-verbose` is opt-in using `negationNames` in `BooleanOptionsConfig`) (`repos/effect/packages/cli/src/Options.ts:145–150`)
 - `Options.choice("format", ["json", "yaml"])` — enumerated string options
 - `Options.keyValueMap("c")` — `-c key=value` repeated multiple times, producing a `HashMap<string, string>`
 - `Options.redacted("token")` — stores the value as a `Redacted`, preventing it from leaking into logs
@@ -196,21 +196,21 @@ Now `--verbose` takes precedence; if absent, the `VERBOSE` env var is read; if t
 
 ### Interactive layer
 
-**`Prompt<Output>`** enables interactive terminal prompts — `Prompt.text`, `Prompt.confirm`, `Prompt.select`, `Prompt.multiSelect`, `Prompt.number`, `Prompt.password`, and others (`repos/effect/packages/cli/src/Prompt.ts:1–20`). `Prompt` extends `Effect<Output, QuitException, Terminal>`, so it is just another Effect. The `--wizard` built-in flag causes `@effect/cli` to derive an interactive prompt sequence from your `Args` and `Options` declarations, walking the user through each field in turn.
+**`Prompt<Output>`** enables interactive terminal prompts — `Prompt.text`, `Prompt.confirm`, `Prompt.select`, `Prompt.multiSelect`, `Prompt.integer`, `Prompt.float`, `Prompt.password`, and others (`repos/effect/packages/cli/src/Prompt.ts:35–39`). `Prompt` extends `Effect<Output, QuitException, Terminal>`, so it is just another Effect. The `--wizard` built-in flag causes `@effect/cli` to derive an interactive prompt sequence from your `Args` and `Options` declarations, walking the user through each field in turn.
 
 ### Help and completions layer
 
-When a user passes `--help`, the framework calls `Command.getHelp` (`repos/effect/packages/cli/src/Command.ts:149–156`) and renders the result. The help content is derived entirely from your `Args`/`Options` declarations and any `withDescription` strings — there is nothing to maintain separately. The same tree drives shell completion scripts: `Command.getBashCompletions`, `Command.getFishCompletions`, and `Command.getZshCompletions` (`repos/effect/packages/cli/src/Command.ts:162–191`) all walk the descriptor and produce the right completion entries, including accepted values for `Args.choice` and `Options.choice`.
+When a user passes `--help`, the framework calls `Command.getHelp` (`repos/effect/packages/cli/src/Command.ts:149–156`) and renders the result. The help content is derived entirely from your `Args`/`Options` declarations and any `withDescription` strings — there is nothing to maintain separately. The same tree drives shell completion scripts: `Command.getBashCompletions`, `Command.getFishCompletions`, and `Command.getZshCompletions` (`repos/effect/packages/cli/src/Command.ts:166–191`) all walk the descriptor and produce the right completion entries, including accepted values for `Args.choice` and `Options.choice`.
 
 ### Error model
 
-**`ValidationError`** is a discriminated union of eleven variants (`repos/effect/packages/cli/src/ValidationError.ts:25–36`): `CommandMismatch`, `CorrectedFlag`, `HelpRequested`, `InvalidArgument`, `InvalidValue`, `MissingValue`, `MissingFlag`, `MultipleValuesDetected`, `MissingSubcommand`, `NoBuiltInMatch`, and `UnclusteredFlag`. `HelpRequested` and the completion/wizard variants are not user errors — they are internally used to control dispatch flow. The framework handles them before your handler runs; only the genuine error variants reach the surface.
+**`ValidationError`** is a discriminated union of eleven variants (`repos/effect/packages/cli/src/ValidationError.ts:21–36`): `CommandMismatch`, `CorrectedFlag`, `HelpRequested`, `InvalidArgument`, `InvalidValue`, `MissingValue`, `MissingFlag`, `MultipleValuesDetected`, `MissingSubcommand`, `NoBuiltInMatch`, and `UnclusteredFlag`. `HelpRequested` and the completion/wizard variants are not user errors — they are internally used to control dispatch flow. The framework handles them before your handler runs; only the genuine error variants reach the surface.
 
-Typo correction is built in via `AutoCorrect` (`repos/effect/packages/cli/src/AutoCorrect.ts:12–13`). If a user types `--verboes`, the `CorrectedFlag` variant carries a suggestion: "Did you mean `--verbose`?" The correction threshold is tunable via `CliConfig`.
+Typo correction is built in via `AutoCorrect` (`repos/effect/packages/cli/src/AutoCorrect.ts:8–13`). If a user types `--verboes`, the `CorrectedFlag` variant carries a suggestion: "Did you mean `--verbose`?" The correction threshold is tunable via `CliConfig`.
 
 ### Built-in and ancillary
 
-**`CliApp`** is the lower-level shell (`repos/effect/packages/cli/src/CliApp.ts:15–28`). `Command.run` is a convenience wrapper around it. `CliApp.make` lets you set a `summary` (a `Span` value for inline help text), a `footer` (a `HelpDoc` for extended notes), and a custom executable name. `CliApp.run` (`repos/effect/packages/cli/src/CliApp.ts:60–74`) takes the args array and a handler, and returns an `Effect<void, ValidationError, CliApp.Environment>` where `CliApp.Environment = FileSystem | Path | Terminal`.
+**`CliApp`** is the lower-level shell (`repos/effect/packages/cli/src/CliApp.ts:15–28`). `Command.run` is a convenience wrapper around it. `CliApp.make` lets you set a `summary` (a `Span` value for inline help text), a `footer` (a `HelpDoc` for extended notes), and a custom executable name. `Command.run` (`repos/effect/packages/cli/src/Command.ts:429–444`) turns a command directly into a `(args: ReadonlyArray<string>) => Effect<void, E | ValidationError, R | CliApp.Environment>` function, where `CliApp.Environment = FileSystem | Path | Terminal`.
 
 **`ConfigFile.layer`** reads a JSON, YAML, INI, or TOML config file from the filesystem and installs its values as an Effect `ConfigProvider` (`repos/effect/packages/cli/src/ConfigFile.ts:60–72`). It requires `Path | FileSystem` from `@effect/platform`. Once provided, any `Options.withFallbackConfig` fallback will consult the file's values — the entire config-file integration is just a `Layer` composing into the Layer graph from Chapter 09. The module is tagged `@since 2.0.0`, reflecting that it was added in a later iteration of the package before version numbering was normalized.
 
@@ -369,8 +369,10 @@ const format = Options.choice("format", ["json", "yaml", "toml"])
 **Falling back to an interactive prompt.** Use `Options.withFallbackPrompt` to turn a missing flag into an interactive question rather than an error:
 
 ```ts
+import { Prompt } from "@effect/cli"
+
 const name = Options.text("name").pipe(
-  Options.withFallbackPrompt(Prompt.text("What is the project name?"))
+  Options.withFallbackPrompt(Prompt.text({ message: "What is the project name?" }))
 )
 ```
 
@@ -435,29 +437,37 @@ const token = Options.text("token").pipe(
 ```
 
 ```ts
-// Correct: centralize the Config schema in one place and derive options from it.
-// This makes every env var visible at a glance and ensures naming consistency.
+// Correct: declare a central AppConfig that lists every env var the CLI reads.
+// Each option's withFallbackConfig still references the individual Config value,
+// but the AppConfig declaration gives you a single place to audit all keys.
 import { Options } from "@effect/cli"
 import { Config } from "effect"
 
+// Single source of truth for env var names and types.
 const AppConfig = Config.all({
   host: Config.string("HOST"),
   port: Config.integer("PORT"),
   token: Config.string("API_TOKEN")
 })
 
+// Per-flag fallback wiring still references individual Config values.
+// The benefit of AppConfig is documentation-level: you can read every env
+// var the program consumes at a glance, and pass AppConfig to
+// ConfigProvider.fromMap in tests to control all values at once.
 const host = Options.text("host").pipe(
   Options.withFallbackConfig(Config.string("HOST"))
 )
 ```
 
-The centralized `AppConfig` object is also usable in tests via `ConfigProvider.fromMap` without touching `process.env` — a technique covered in Chapter 38.
+The centralized `AppConfig` object is usable in tests via `ConfigProvider.fromMap` without touching `process.env` — pass the whole map to satisfy every fallback in one call. The env-var names are kept consistent because they are written once in `AppConfig` and read from there when wiring tests. This technique is covered in Chapter 38.
 
 ### Dropping `Effect.suspend` around the `cli` call
 
 ```ts
-// Wrong: cli(process.argv) is called eagerly at module load time,
-// before NodeContext.layer is provided — the effect runs unconfigured.
+// Wrong: process.argv is read at the call site when cli(process.argv) is written.
+// In a module that is loaded before the runtime is fully configured, this means
+// argv is captured at the wrong moment — before any test harness or wrapper has
+// had a chance to swap process.argv for a custom value.
 const cli = Command.run(myCommand, { name: "tool", version: "1.0.0" })
 cli(process.argv).pipe(
   Effect.provide(NodeContext.layer),
@@ -466,21 +476,22 @@ cli(process.argv).pipe(
 ```
 
 ```ts
-// Correct: wrap in Effect.suspend so argv is captured lazily,
-// after the full layer stack is in place.
+// Correct: wrap in Effect.suspend so both the argv read and the Effect
+// construction are deferred until the runtime actually executes the outermost effect.
 Effect.suspend(() => cli(process.argv)).pipe(
   Effect.provide(NodeContext.layer),
   NodeRuntime.runMain
 )
 ```
 
-`Effect.suspend` is the standard idiom for deferring any `Effect` that depends on ambient state (like `process.argv`) until the runtime is ready. Chapter 02 introduces `Effect` as a deferred description; `Effect.suspend` makes any arbitrary side-effectful value play by the same rules.
+`cli(process.argv)` returns an `Effect` — it does not execute eagerly. The problem is subtler: `process.argv` is read as a value at the point where `cli(process.argv)` is called, not when the resulting Effect runs. If the module is evaluated before the runtime is ready, or in a test environment where `process.argv` has not yet been set up, the wrong array is captured. `Effect.suspend(() => cli(process.argv))` defers the evaluation of the entire thunk — including the `process.argv` read and the call to `cli` — until execution time, ensuring the correct argv is always used. Chapter 02 introduces `Effect` as a deferred description; `Effect.suspend` is the standard idiom for bringing any side-effectful expression into the same deferred evaluation model.
 
 ---
 
 ## See also
 
 - [Chapter 02 — Effect as a value](../part-1-foundations/02-effect-as-a-value.md): `Command<Name, R, E, A>` extends `Effect<A, never, Command.Context<Name>>`. Understanding the three type parameters is a prerequisite for reading the command type signatures.
+- [Chapter 04 — The pipe function and the dual API style](../part-1-foundations/04-pipe-and-dual-api.md) — the Pipeable trait and dual data-first/data-last combinator form that Command, Args, and Options all implement.
 - [Chapter 09 — Layer](../part-1-foundations/09-layer.md): `Command.provide`, `ConfigFile.layer`, and `NodeContext.layer` are all Layers in the sense introduced there. The `CliApp.Environment = FileSystem | Path | Terminal` requirement is satisfied by providing a platform layer.
 - [Chapter 14 — Schema part 1](../part-1-foundations/14-schema-part-1.md): `Args.fileSchema` and `Options.fileSchema` accept a `Schema` from the core `effect` package. The file's contents are decoded against that schema, and a `ParseError` becomes an `InvalidValue` in the `ValidationError` union.
 - [Chapter 38 — Config and secrets](../part-2-tour/38-config-and-secrets.md): `Options.withFallbackConfig` and `ConfigFile.layer` are the bridges between `@effect/cli` and Effect's full Config system — `Config.nested`, `Config.all`, `Config.redacted`, and `ConfigProvider.fromMap` for testing. That chapter covers everything this one defers.
