@@ -22,7 +22,7 @@ The change touches four files and adds one: `src/CacheKey.ts` (new), `src/Cache.
 
 ## What we already have
 
-After Chapter 49, `worked-example/` has six commits (most recent: `5f19af5 feat: schema-driven CacheConfig with Config integration`).
+After Chapter 49, `worked-example/` has seven commits (most recent: `5f19af5 feat: schema-driven CacheConfig with Config integration`).
 
 `src/Cache.ts` carries two forward-declaration comments:
 
