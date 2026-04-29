@@ -72,10 +72,15 @@ The `CacheService` interface gains `@since` and `@category models`. The `Cache` 
  *   return value
  * })
  *
+ * // Provide CacheConfig from env, then build the cache layer
  * const layer = Cache.layerMemory.pipe(
- *   (l) => l,
- *   // provide CacheConfig.layer in production
+ *   Layer.provide(CacheConfig.layer)
  * )
+ *
+ * const program2 = Effect.gen(function* () {
+ *   const cache = yield* Cache
+ *   // ... use cache
+ * }).pipe(Effect.provide(layer))
  * ```
  *
  * @since 0.1.0
@@ -174,7 +179,7 @@ export const events: Effect.Effect<Stream.Stream<CacheEvent>, never, Cache> = Ef
 )
 ```
 
-Note that `events` has type `Effect<Stream<CacheEvent>, never, Cache>`, not `Stream<CacheEvent, never, Cache>`. This is intentional: the `Stream` is constructed inside the service (it wraps the internal `PubSub`), so you first yield the `Effect` to get the `Stream`, then consume the `Stream`. The test in Chapter 56 — `const stream = yield* Cache.events` then `Stream.runCollect` — follows exactly this pattern. See `repos/effect/packages/effect/src/Stream.ts:2031-2058` for how `Stream.fromPubSub` works.
+Note that `events` has type `Effect<Stream<CacheEvent>, never, Cache>`, not `Stream<CacheEvent, never, Cache>`. This is intentional: the `Stream` is constructed inside the service (it wraps the internal `PubSub`), so you first yield the `Effect` to get the `Stream`, then consume the `Stream`. The Chapter 56 events test (`test/Cache.test.ts:142-157`) accesses the events stream via the service value (`cache.events`). The same pattern with the module-level combinator added in this chapter would be `const stream = yield* Cache.events` — both produce identical streams. See `repos/effect/packages/effect/src/Stream.ts:2031-2058` for how `Stream.fromPubSub` works.
 
 ### `worked-example/src/CacheError.ts` (modified)
 
@@ -253,7 +258,7 @@ export const CacheEvent = Data.taggedEnum<CacheEvent>()
 }
 ```
 
-The structure mirrors `repos/effect/packages/effect/docgen.json` exactly — `$schema`, `exclude`, and `examplesCompilerOptions` with `paths` for resolving package imports inside `@example` blocks. The one adaptation is `moduleResolution: "NodeNext"` instead of `"Bundler"`: the worked-example uses NodeNext (see `worked-example/tsconfig.src.json`), so the docgen compiler options must match. The `paths` entries point at the local source tree so `@example/effect-cache` resolves to `src/index.js` and `effect` resolves to the pinned monorepo snapshot.
+The chapter's `docgen.json` mirrors `repos/effect/packages/effect/docgen.json` with two adaptations: `moduleResolution: "NodeNext"` (matching this package's tsconfig) and `lib: ["ES2022"]` (DOM omitted — this is a Node-only library). The `srcLink` and `parallel` fields are deferred to publishing (Chapter 59). The `paths` entries point at the local source tree so `@example/effect-cache` resolves to `src/index.js` and `effect` resolves to the pinned monorepo snapshot.
 
 The `exclude` pattern (`src/internal/**/*.ts`) tells docgen not to generate documentation pages for internal modules. This is the same pattern used in every package in `repos/effect/` — internal functions that are technically exported for cross-package use but are not part of the public contract.
 
@@ -261,7 +266,7 @@ The `exclude` pattern (`src/internal/**/*.ts`) tells docgen not to generate docu
 
 ## Why this design choice
 
-**`@since` enforces semver discipline.** The Effect monorepo uses `@since 2.0.0` on every exported symbol in `repos/effect/packages/effect/src/Effect.ts:2-3`. The contract is simple: the version in `@since` is the minimum version at which the export is available. Removing the tag or lowering the version is a documentation lie that breaks consumers relying on it for compatibility decisions. Tools like `@effect/docgen` and TypeScript language-server plugins can surface this tag inline, so callers see the version in their IDE tooltip without opening docs.
+**`@since` enforces semver discipline.** The Effect monorepo uses `@since 2.0.0` on every exported symbol — the module-level `@since` at lines 1-7 of `repos/effect/packages/effect/src/Effect.ts` plus per-symbol `@since` on every export, e.g., `succeed` JSDoc starting around line 78. The contract is simple: the version in `@since` is the minimum version at which the export is available. Removing the tag or lowering the version is a documentation lie that breaks consumers relying on it for compatibility decisions. Tools like `@effect/docgen` and TypeScript language-server plugins can surface this tag inline, so callers see the version in their IDE tooltip without opening docs.
 
 **`@category` organizes the docs site.** Without `@category`, every exported symbol lands in a flat, alphabetical list on the generated docs page. With consistent vocabulary — `constructors`, `combinators`, `layers`, `models`, `errors`, `tags` — the docs site groups them into navigable sections. The taxonomy used here was read directly from `repos/effect/packages/effect/src/Cache.ts` (which uses `models`, `constructors`, and `symbols`) and from `repos/effect/packages/effect/src/Layer.ts` (which adds `getters` and `destructors`). Our package avoids `symbols` (no TypeId exports) and `type-level` (no variance helpers) because those categories appear in Effect core for internal type machinery that `effect-cache` does not expose.
 
@@ -294,7 +299,7 @@ git commit -m "docs: JSDoc tags on public exports + docgen config"
 
 ## See also
 
-- [`JSDoc @since, @category, @example tags` — patterns catalog](../../research/02-patterns-catalog.md#jsdoc-since-category-example-tags) — the canonical pattern entry; cites `repos/effect/packages/effect/src/Effect.ts:2-3` and `repos/effect/packages/effect/src/Effect.ts:78-80` for the real-world usage
+- [`JSDoc @since, @category, @example tags` — patterns catalog](../../research/02-patterns-catalog.md#jsdoc-since-category-example-tags) — the canonical pattern entry; cites the module-level header at `repos/effect/packages/effect/src/Effect.ts:1-7` and per-symbol `@since` around line 78 (e.g., `succeed`) for the real-world usage
 - [Chapter 21 — printer-ansi — monorepo conventions](../part-2-tour/21-printer-ansi.md) — first encounter with `@since` / `@category` tags in a published Effect package; shows the vocabulary in context
 - [Chapter 22 — Platform services — abstract runtime layer](../part-2-tour/22-platform.md) — `@effect/platform`'s use of `internal/` exclusion and the Tag+interface pattern that `effect-cache` mirrors
 - [Chapter 53 — Dual API — `dual` from effect/Function](./53-dual-api.md) — the dual overloads on `Cache.get` and `Cache.set` that the `@example` blocks in this chapter clarify; `repos/effect/packages/effect/src/Function.ts:31-103`
