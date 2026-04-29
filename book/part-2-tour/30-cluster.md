@@ -183,7 +183,7 @@ export class Persisted extends Context.Reference<Persisted>()(
 ) {}
 ```
 
-The companion `Uninterruptible` annotation controls whether a client interrupt propagates to the server handler. `ClusterSchema.ts:16-39` defines three modes: `true` (both sides), `"client"` (interrupt client fiber but keep server running), `"server"` (server is uninterruptible but client cancels). Source: `repos/effect/packages/cluster/src/ClusterSchema.ts:16-39`.
+The companion `Uninterruptible` annotation controls whether a client interrupt propagates to the server handler. `ClusterSchema.ts:16-39` defines three modes: `true` (both sides uninterruptible), `"client"` (client fiber is uninterruptible — the client will not be interrupted), `"server"` (server handler is uninterruptible — the server keeps running even if the client cancels). Source: `repos/effect/packages/cluster/src/ClusterSchema.ts:16-39`.
 
 ### Snowflake IDs
 
@@ -274,7 +274,7 @@ class JoinRoom extends Rpc.make("JoinRoom", {
 class PostMessage extends Rpc.make("PostMessage", {
   payload: Schema.Struct({ userId: Schema.String, text: Schema.String }),
   success: Schema.Void,
-}).pipe(Rpc.annotate(Persisted, true)) {}
+}).annotate(Persisted, true) {}
 
 class GetHistory extends Rpc.make("GetHistory", {
   payload: Schema.Void,
@@ -431,10 +431,9 @@ const CustomConfig = ShardingConfig.layerFromEnv.pipe(
 **Message reliability tier.** Annotate only the messages that truly need durability; leave lightweight query RPCs un-persisted to avoid storage overhead:
 
 ```ts
-class WriteEvent extends Rpc.make("WriteEvent", { ... }).pipe(
-  Rpc.annotate(Persisted, true),    // durable
-  Rpc.annotate(Uninterruptible, "server"),
-) {}
+class WriteEvent extends Rpc.make("WriteEvent", { ... })
+  .annotate(Persisted, true)            // durable
+  .annotate(Uninterruptible, "server") {}
 
 class ReadState extends Rpc.make("ReadState", { ... }) {} // not persisted — fast path
 ```
@@ -442,13 +441,19 @@ class ReadState extends Rpc.make("ReadState", { ... }) {} // not persisted — f
 **Mailbox-style entity.** Use `entity.toLayerMailbox` for a receive-loop pattern instead of per-handler registration:
 
 ```ts
+import { Mailbox, Stream } from "effect"
+
 const CounterMailbox = Counter.toLayerMailbox((mailbox, replier) =>
   Effect.gen(function*() {
     let count = 0
-    for (const envelope of yield* mailbox) {
-      count += envelope.payload.amount
-      yield* replier.succeed(envelope, count)
-    }
+    yield* Mailbox.toStream(mailbox).pipe(
+      Stream.runForEach((envelope) =>
+        Effect.gen(function*() {
+          count += envelope.payload.amount
+          yield* replier.succeed(envelope, count)
+        })
+      )
+    )
   })
 )
 ```
@@ -544,3 +549,4 @@ const ConfigLive = ShardingConfig.layerFromEnv
 - **[LayerMap — keyed map of layers](../../research/02-patterns-catalog.md#layermap--keyed-map-of-layers-per-tenant--per-request):** The patterns catalog entry for `LayerMap` covers the per-tenant use-case, the `idleTimeToLive` option, and its relationship to `RcMap`. The cluster application shown in this chapter is the distributed-systems variant of that pattern.
 - **[RcRef and RcMap](../../research/02-patterns-catalog.md#rcref-and-rcmap--reference-counted-resources):** `LayerMap` is built on `RcMap` internally. The patterns catalog entry explains reference counting and TTL semantics that `LayerMap`'s `idleTimeToLive` option inherits.
 - **`research/packages/cluster.md`:** The per-package research note for `@effect/cluster`. It covers `ClusterCron`, `ClusterWorkflowEngine`, `K8sHttpClient`, the shard locking mechanism, and the `DeliverAt` protocol not addressed in this chapter.
+- **Part III (chapters 45–60) — worked example:** Will demonstrate cluster-style services for multi-tenant deployments, showing how the patterns introduced here (Entity, Singleton, LayerMap, SqlMessageStorage) compose into a production-grade multi-tenant architecture.
