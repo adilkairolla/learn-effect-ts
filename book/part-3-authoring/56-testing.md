@@ -38,11 +38,10 @@ There is a `vitest.config.ts` in the project root that picks up `test/**/*.test.
 
 ## What we're adding
 
-A single new file: **`test/Cache.test.ts`** (new). It exercises both layers across seven test cases:
+A single new file: **`test/Cache.test.ts`** (new). It exercises both layers across eight test cases (five `it.effect` for `layerMemory`, three `it.scoped` for `layerMemoryWithEviction`).
 
-- Four `it.effect` tests for `layerMemory` (missing key, set/get, delete, invalidate).
-- One `it.effect` test for TTL expiry on the memory layer using `TestClock.adjust`.
-- Two `it.scoped` tests for `layerMemoryWithEviction` (eviction sweep via TestClock, events stream subscription).
+- Five `it.effect` tests for `layerMemory` (missing key, set/get, delete, invalidate clears all entries, get returns None for an expired entry (TestClock)).
+- Three `it.scoped` tests for `layerMemoryWithEviction` (eviction sweep via TestClock, set/get inside the eviction layer, and events stream subscription).
 
 The `test/` directory is intentionally outside `tsconfig.src.json`'s `rootDir: "src"` — vitest compiles test files via esbuild, not `tsc`. So `npx tsc -p tsconfig.src.json --noEmit` does not check this file; instead, run `npx vitest run` to exercise the tests.
 
@@ -100,7 +99,7 @@ describe("Cache.layerMemory", () => {
 })
 ```
 
-`it.effect` is exported from `@effect/vitest` at `repos/effect/packages/vitest/src/index.ts:186`. Its type is `Vitest.Tester<TestServices.TestServices>`, meaning the test Effect may require `TestServices` (TestClock, TestRandom, etc.) — the framework provides those automatically. The Effect must *not* require `Scope`; if it does, the compiler rejects it (use `it.scoped` instead).
+`it.effect` is exported from `@effect/vitest` at `repos/effect/packages/vitest/src/index.ts:183-186`. Its type is `Vitest.Tester<TestServices.TestServices>`, meaning the test Effect may require `TestServices` (TestClock, TestRandom, etc.) — the framework provides those automatically. The Effect must *not* require `Scope`; if it does, the compiler rejects it (use `it.scoped` instead).
 
 Each test calls `Effect.provide(layer)` to satisfy the `Cache` requirement. The layer is built and torn down for every test — there is no shared state between the `set then get` test and the `delete removes the entry` test.
 
@@ -159,13 +158,15 @@ describe("Cache.layerMemoryWithEviction", () => {
 })
 ```
 
-`it.scoped` is exported at `repos/effect/packages/vitest/src/index.ts:191`. Its type is `Vitest.Tester<TestServices.TestServices | Scope.Scope>`. The eviction layer uses `Layer.scoped` which internally calls `Effect.forkScoped` — the forked fiber attaches to a `Scope`. That scope is provided by `it.scoped`; using `it.effect` here would leave the `Scope` requirement unsatisfied.
+`it.scoped` is exported at `repos/effect/packages/vitest/src/index.ts:188-191`. Its type is `Vitest.Tester<TestServices.TestServices | Scope.Scope>`. The eviction layer uses `Layer.scoped` which internally calls `Effect.forkScoped` — the forked fiber attaches to a `Scope`. That scope is provided by `it.scoped`; using `it.effect` here would leave the `Scope` requirement unsatisfied.
 
 The events test requires careful ordering. `cache.events` is a `Stream<CacheEvent>` backed by `Stream.fromPubSub(pubsub)`. Subscriptions are created lazily when the stream runs. We fork `Stream.take(3).pipe(Stream.runCollect)` to start the subscription, then call `Effect.yieldNow()` to yield the current fiber and let the collector fiber begin executing — registering its PubSub subscription before any events are published. Without `Effect.yieldNow()`, the operations that produce events could run before the subscription is active, and the first event would be lost.
 
 `Stream.runCollect` returns `Effect<Chunk<A>, E, R>`. `Chunk.toReadonlyArray` (from `"effect/Chunk"`) converts it to a plain readonly array for `.map`. The `Array.from` idiom works too, but `Chunk.toReadonlyArray` is more idiomatic in Effect code.
 
 `Fiber.join(collectorFiber)` awaits the fiber's result. The fiber completes as soon as `Stream.take(3)` has seen three events and `Stream.runCollect` finishes. If the operations do not produce three events, the test would hang — which is itself a useful diagnostic.
+
+> The full file at `worked-example/test/Cache.test.ts` contains eight tests; the snippets above show the most instructive examples — see the source for `invalidate clears all entries` (lines 72-82) and `set then get still works inside eviction layer` (lines 122-132) which follow the same patterns.
 
 ---
 
@@ -230,3 +231,6 @@ git commit -m "test: it.effect and it.scoped tests for Cache layers"
 - [`repos/effect/packages/effect/src/TestClock.ts:38-82`](../../repos/effect/packages/effect/src/TestClock.ts) — the `TestClock` interface and the module-level JSDoc explaining the fork-adjust-verify pattern that makes virtual-time tests reliable.
 - [`repos/effect/packages/effect/test/Cache.test.ts`](../../repos/effect/packages/effect/test/Cache.test.ts) — Effect's own cache test, which demonstrates `it.effect` + `TestClock.adjust("2 seconds")` against the built-in memoising `Cache.make` — a good reference for the virtual-time idiom.
 - [`Layer.merge` / `provide` / `fresh` — Layer composition](../../research/02-patterns-catalog.md#layermerge--provide--fresh--layer-composition) — catalog entry explaining when to use `Layer.fresh` (per-test isolation) vs default memoisation (shared across suite).
+- [Chapter 57 — Documenting with JSDoc](57-jsdoc.md) — public exports get @since/@category tags so docs tooling can extract them
+- [Chapter 58 — Versioning, exports map, and dual ESM/CJS](58-versioning-and-exports.md) — the package.json exports map that includes test/ exclusion
+- [Chapter 60 — Retrospective](60-retrospective.md) — re-read effect-cache against the patterns catalog
