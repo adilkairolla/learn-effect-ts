@@ -148,11 +148,11 @@ export const runEviction = (
 
 **`Ref.update`** — (covered in Chapter 51; see [Chapter 36 — Concurrency primitives](../part-2-tour/36-concurrency-primitives.md)). Atomically applies a pure function to the ref's current value. Using `Ref.update` rather than separate `Ref.get` + `Ref.set` ensures the sweep is an atomic compare-and-swap: no entries written by `set` between the read and write are lost.
 
-**`Effect.forkScoped`** — `repos/effect/packages/effect/src/Effect.ts:6440-6507`. Signature: `<A, E, R>(self: Effect<A, E, R>) => Effect<Fiber.RuntimeFiber<A, E>, never, Scope.Scope | R>`. Forks the effect into the current `Scope`. The fiber runs independently but is interrupted when the scope closes. This is what adds `Scope.Scope` to the `R` channel of `runEviction`.
+**`Effect.forkScoped`** — `repos/effect/packages/effect/src/Effect.ts:6438-6507`. Signature: `<A, E, R>(self: Effect<A, E, R>) => Effect<Fiber.RuntimeFiber<A, E>, never, Scope.Scope | R>`. Forks the effect into the current `Scope`. The fiber runs independently but is interrupted when the scope closes. This is what adds `Scope.Scope` to the `R` channel of `runEviction`.
 
 **`Schedule.spaced(duration)`** — `repos/effect/packages/effect/src/Schedule.ts:1742-1757`. Returns a schedule that recurs indefinitely, with a fixed delay _between_ the end of one execution and the start of the next. The `duration` parameter accepts a `DurationInput` — which includes the string form `"100 millis"` via `Duration.decode` (`repos/effect/packages/effect/src/Duration.ts:82-144`). So `Schedule.spaced(\`${config.evictionIntervalMillis} millis\`)` converts the plain integer from `CacheConfig` to a Duration string at runtime, avoiding an explicit `Duration.millis(...)` call.
 
-**`Effect.repeat(effect, schedule)`** — `repos/effect/packages/effect/src/Effect.ts:10178-10192`. Data-first form: runs `effect` once, then repeats it according to `schedule`. The effect (`sweep`) is idempotent; the schedule (`spaced`) provides the delay. `repeat` propagates interruption — when the enclosing `Scope` closes, the forked fiber is interrupted and `repeat` stops cleanly.
+**`Effect.repeat(effect, schedule)`** — `repos/effect/packages/effect/src/Effect.ts:10116-10192`. Data-first form: runs `effect` once, then repeats it according to `schedule`. The effect (`sweep`) is idempotent; the schedule (`spaced`) provides the delay. `repeat` propagates interruption — when the enclosing `Scope` closes, the forked fiber is interrupted and `repeat` stops cleanly.
 
 ### `src/Cache.ts` (modified)
 
@@ -187,7 +187,7 @@ See `worked-example/src/Cache.ts`.
 
 ### `Effect.forkScoped` over `Effect.forkDaemon`
 
-`Effect.forkDaemon` attaches the fiber to the runtime's root scope. The fiber runs until the entire application terminates — it does not stop when the layer is released. For a cache eviction loop that lives alongside a single layer instance, that is wrong: if the layer is torn down (e.g., in a test that rebuilds the layer), the daemon fiber keeps running and sweeping a ref that may have been replaced. `Effect.forkScoped` puts the fiber in the _enclosing_ scope. The layer's scope is that enclosing scope, so the fiber's lifetime exactly matches the layer's lifetime.
+Plain `Effect.fork` attaches the child to the parent fiber's lifetime — when the parent returns, the child is interrupted — making it unsuitable for a background loop that must outlive its creator and end with the layer. `Effect.forkDaemon` attaches the fiber to the runtime's root scope. The fiber runs until the entire application terminates — it does not stop when the layer is released. For a cache eviction loop that lives alongside a single layer instance, that is wrong: if the layer is torn down (e.g., in a test that rebuilds the layer), the daemon fiber keeps running and sweeping a ref that may have been replaced. `Effect.forkScoped` puts the fiber in the _enclosing_ scope. The layer's scope is that enclosing scope, so the fiber's lifetime exactly matches the layer's lifetime.
 
 A comparable pattern in the Effect source: `repos/effect/packages/effect/src/internal/rateLimiter.ts` shows both `tokenBucket` and `fixedWindow` using `Effect.forkScoped` to tie a token-refill fiber to the limiter's scope. The limiter is intended to be built via `Layer.scoped` (its factory returns `Effect<RateLimiter, never, Scope.Scope>`), and the fiber stops exactly when the limiter is released. Our eviction fiber follows the same idiom.
 
