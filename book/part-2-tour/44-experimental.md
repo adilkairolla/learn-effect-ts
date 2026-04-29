@@ -106,42 +106,21 @@ const program = Effect.scoped(
 
 ### Machine — typed actor / FSM
 
-`Machine` is the `@effect/experimental` answer to stateful actor loops. The structural description — initial state, named procedures, identifier — lives in a `ProcedureList` (a plain data value). Execution is entirely deferred to `boot`, so the machine can be passed around, composed, and tested without launching a fiber.
+`Machine` is the `@effect/experimental` answer to stateful actor loops. The structural description — initial state, named procedures, identifier — lives in a `ProcedureList` (a plain data value). Execution is deferred to `boot`, so the machine can be passed around and tested without launching a fiber.
 
-**`Machine.make`** (`repos/effect/packages/experimental/src/Machine.ts:319–337`) accepts an `initialize` function that receives an optional input and an optional `previousState` (for replay after restart), and must return an `Effect<ProcedureList<State, Public, Private, R>>`. The result is a plain `Machine` record — no fiber is started:
+**`Machine.make`** (`repos/effect/packages/experimental/src/Machine.ts:319–337`) accepts an `initialize` effect that returns a `ProcedureList`. **`Machine.boot`** (`repos/effect/packages/experimental/src/Machine.ts:470–487`) launches the actor inside a `Scope`, creating an unbounded `Queue` for requests, a `PubSub` for state updates, and a `FiberSet`/`FiberMap` for supervised background forks (`repos/effect/packages/experimental/src/Machine.ts:602–604`). A defect in any background fiber surfaces as a `MachineDefect` to the actor loop.
 
-```ts
-export const make: {
-  // overload 1: no input
-  <State, Public, Private, InitErr, R>(
-    initialize: Effect.Effect<ProcedureList<State, Public, Private, R>, InitErr, R>
-  ): Machine<State, Public, Private, void, InitErr, ...>
-  // overload 2: typed input
-  <State, Public, Private, Input, InitErr, R>(
-    initialize: Machine.Initialize<Input, State, Public, Private, R, InitErr, R>
-  ): Machine<State, Public, Private, Input, InitErr, ...>
-}
-```
+**`ProcedureList`** (`repos/effect/packages/experimental/src/Machine/ProcedureList.ts:60–68`) is the builder: `procedures.make(initialState, { identifier? })` creates an empty list; `procedures.add<Req>()("Tag", handler)` appends a public procedure; `procedures.addPrivate` appends an internal-only one. Each handler receives `{ request, state, send, fork, forkReplace, forkOne }` and returns `Effect<readonly [Reply, NextState]>`.
 
-**`Machine.boot`** (`repos/effect/packages/experimental/src/Machine.ts:470–487`) launches the actor inside a `Scope`. It creates an unbounded `Queue` for requests, a `PubSub` for state updates, a `FiberSet` for fire-and-forget forks, and a `FiberMap` for named replaceable forks (`repos/effect/packages/experimental/src/Machine.ts:602–604`). All three are joined, so a defect in any background fiber surfaces as a `MachineDefect` to the actor loop rather than silently dying.
+**`actor.send`** dispatches a tagged request and suspends until the handler returns. Per-send OpenTelemetry spans are built in (`Machine.withTracingEnabled`, `repos/effect/packages/experimental/src/Machine.ts:458–464`).
 
-**`ProcedureList`** (`repos/effect/packages/experimental/src/Machine/ProcedureList.ts:60–68`) is the builder:
+**`Machine.makeSerializable`** (`repos/effect/packages/experimental/src/Machine.ts:356`) adds a `Schema`-encoded request/reply path, enabling wire-format callers via `actor.sendUnknown` (`repos/effect/packages/experimental/src/Machine.ts:581–592`).
 
-- `procedures.make(initialState, { identifier? })` — creates an empty list
-- `procedures.add<Req>()("Tag", handler)` — appends a public procedure
-- `procedures.addPrivate<Req>()("Tag", handler)` — appends a private procedure (internal sends only)
+**`Machine.retry`** (`repos/effect/packages/experimental/src/Machine.ts:429–443`) attaches a `Schedule` to `initialize`, restarting on `InitErr` or `MachineDefect`.
 
-Each handler receives `{ request, state, send, fork, forkReplace, forkOne }` and must return `Effect<readonly [Reply, NextState]>`.
+The type `Machine<State, Public, Private, Input, InitErr, R>` captures the full surface at compile time.
 
-**`actor.send`** dispatches a tagged request and suspends until the handler returns the reply. Per-send OpenTelemetry spans are built in and can be toggled with `Machine.withTracingEnabled` (`repos/effect/packages/experimental/src/Machine.ts:458–464`).
-
-**`Machine.makeSerializable`** adds a `Schema`-encoded request/reply path, enabling the same actor to serve both TypeScript and wire-format callers via `actor.sendUnknown` (`repos/effect/packages/experimental/src/Machine.ts:581–592`).
-
-**`Machine.retry`** (`repos/effect/packages/experimental/src/Machine.ts:429–443`) attaches a `Schedule` to the `initialize` effect, restarting the machine on `InitErr` or `MachineDefect`.
-
-The machine's type signature — `Machine<State, Public, Private, Input, InitErr, R>` — captures the full typed surface at compile time: state shape, legal messages, initialization error, and required environment.
-
-> Note: `Machine` lives in `@effect/experimental`. The `Match` module (Chapter 39) is sometimes confused with it because both deal with discriminated dispatch, but `Match` is a pure utility in `effect` core. `Machine` builds its own tagged dispatch atop the `Request` protocol — it does not call `Match.value` internally.
+> Note: `Machine` lives in `@effect/experimental`. The `Match` module (Chapter 39) is sometimes confused with it, but `Match` is a pure dispatch utility in core `effect`; `Machine` builds its own tagged dispatch atop the `Request` protocol.
 
 ### PersistedCache — SQL-backed two-tier cache
 
@@ -208,29 +187,23 @@ query(keys, effect)
 
 ### SynchronizedRef — atomic effectful update
 
-> **In core `effect`, not `@effect/experimental`.** `SynchronizedRef` is stable. This section introduces the pattern; the production example below shows it in context.
+> **In core `effect`, not `@effect/experimental`.** `SynchronizedRef` is stable.
 
-`SynchronizedRef` (`repos/effect/packages/effect/src/SynchronizedRef.ts:71`) extends `Ref` with one additional operation: `modifyEffect`. Where `Ref.modify` accepts a pure `(A) => [B, A]`, `modifyEffect` accepts `(A) => Effect<[B, A], E, R>`. The internal semaphore ensures no other fiber can observe the ref between the read and the write, even when the update effect yields to the scheduler.
+`SynchronizedRef` (`repos/effect/packages/effect/src/SynchronizedRef.ts:71`) extends `Ref` with `modifyEffect`: an atomic read-modify-write where the update is an `Effect`. The internal semaphore prevents any other fiber from observing the ref between the read and the write, even if the effect yields:
 
 ```ts
 import * as SynchronizedRef from "effect/SynchronizedRef"
-import * as Effect from "effect/Effect"
 
-// Wrong: Ref + manual Semaphore (see Chapter 36 anti-patterns)
-// const v = yield* Ref.get(ref)
-// const next = yield* expensiveLookup(v)  // another fiber can read here
-// yield* Ref.set(ref, next)              // race condition
-
-// Correct: SynchronizedRef.modifyEffect
 const ref = yield* SynchronizedRef.make<string | null>(null)
+// Atomic: fetch only on cache-miss, no interleaving
 const result = yield* SynchronizedRef.modifyEffect(ref, (current) =>
   current !== null
-    ? Effect.succeed([current, current] as const)         // cache hit
-    : Effect.map(fetchToken(), (token) => [token, token] as const)  // fetch + store atomically
+    ? Effect.succeed([current, current] as const)
+    : Effect.map(fetchToken(), (token) => [token, token] as const)
 )
 ```
 
-`SynchronizedRef` is the right tool when the effectful update must be atomic — for example, lazy initialization of a connection or a cached token refresh. See the [pattern catalog entry](../../research/02-patterns-catalog.md#synchronizedref--atomic-effectful-update).
+Use it for lazy initialization, cached token refresh, or any case where skipping the semaphore creates a race. See the [pattern catalog entry](../../research/02-patterns-catalog.md#synchronizedref--atomic-effectful-update) and Chapter 36.
 
 ---
 
@@ -330,10 +303,6 @@ type ConnState =
   | { readonly _tag: "Idle" }
   | { readonly _tag: "Active"; readonly host: string; readonly connectedAt: number }
 
-// ---- active-connection count observable (SubscriptionRef — core, stable) ----
-
-const makeActiveCount = SubscriptionRef.make(0)
-
 // ---- cached connection metadata (PersistedCache — @experimental) ----
 
 class MetaKey extends Schema.TaggedRequest<MetaKey>()("MetaKey", {
@@ -353,64 +322,71 @@ const makeMetaCache = PersistedCache.make({
 
 const makeSendLimiter = RateLimiter.make({ limit: 100, interval: "1 seconds" })
 
-// ---- the Machine (@experimental) ----
+// ---- the Machine factory — takes the shared activeCount ref (@experimental) ----
+// activeCount is created in the outer program scope and passed in so that the
+// outer program can subscribe to its .changes stream independently of the machine.
 
-const ConnectionMachine = Machine.make(
-  Effect.gen(function* () {
-    const activeCount = yield* makeActiveCount
-    const metaCache = yield* makeMetaCache
-    const sendLimiter = yield* makeSendLimiter
+const makeConnectionMachine = (
+  activeCount: SubscriptionRef.SubscriptionRef<number>
+) =>
+  Machine.make(
+    Effect.gen(function* () {
+      const metaCache = yield* makeMetaCache
+      const sendLimiter = yield* makeSendLimiter
 
-    return procedures.make<ConnState>({ _tag: "Idle" }, { identifier: "Connection" }).pipe(
+      return procedures.make<ConnState>({ _tag: "Idle" }, { identifier: "Connection" }).pipe(
 
-      procedures.add<Connect>()("Connect", ({ request, state }) =>
-        state._tag === "Active"
-          ? Effect.succeed([
-              { host: state.host, connectedAt: state.connectedAt },
-              state
-            ] as const)
-          : Effect.gen(function* () {
-              // store metadata in PersistedCache (survives restarts)
-              yield* metaCache.get(new MetaKey({ host: request.host }))
-              // update observable count (SubscriptionRef — stream-able)
-              yield* SubscriptionRef.update(activeCount, (n) => n + 1)
-              const connectedAt = Date.now()
-              return [
-                { host: request.host, connectedAt },
-                { _tag: "Active" as const, host: request.host, connectedAt }
-              ] as const
-            })
-      ),
+        procedures.add<Connect>()("Connect", ({ request, state }) =>
+          state._tag === "Active"
+            ? Effect.succeed([
+                { host: state.host, connectedAt: state.connectedAt },
+                state
+              ] as const)
+            : Effect.gen(function* () {
+                // store metadata in PersistedCache (survives restarts)
+                yield* metaCache.get(new MetaKey({ host: request.host }))
+                // update shared observable counter
+                yield* SubscriptionRef.update(activeCount, (n) => n + 1)
+                const connectedAt = Date.now()
+                return [
+                  { host: request.host, connectedAt },
+                  { _tag: "Active" as const, host: request.host, connectedAt }
+                ] as const
+              })
+        ),
 
-      procedures.add<Disconnect>()("Disconnect", ({ state }) =>
-        state._tag === "Active"
-          ? Effect.map(
-              SubscriptionRef.update(activeCount, (n) => Math.max(0, n - 1)),
-              () => [undefined, { _tag: "Idle" as const }] as const
-            )
-          : Effect.succeed([undefined, state] as const)
-      ),
+        procedures.add<Disconnect>()("Disconnect", ({ state }) =>
+          state._tag === "Active"
+            ? Effect.map(
+                SubscriptionRef.update(activeCount, (n) => Math.max(0, n - 1)),
+                () => [undefined, { _tag: "Idle" as const }] as const
+              )
+            : Effect.succeed([undefined, state] as const)
+        ),
 
-      procedures.add<Send>()("Send", ({ request, state }) =>
-        state._tag !== "Active"
-          ? Effect.fail("not connected")
-          : sendLimiter(
-              Effect.succeed(request.data.length)
-            )
+        procedures.add<Send>()("Send", ({ request, state }) =>
+          state._tag !== "Active"
+            ? Effect.fail("not connected")
+            : sendLimiter(
+                Effect.succeed(request.data.length)
+              )
+        )
       )
-    )
-  })
-)
+    })
+  )
 
 // ---- wire up and run ----
 
 const program = Effect.scoped(
   Effect.gen(function* () {
-    const actor = yield* Machine.boot(ConnectionMachine)
+    // Create activeCount here so this scope owns it and the watcher below
+    // subscribes to the same ref the machine mutates.
+    const activeCount = yield* SubscriptionRef.make(0)
+    const actor = yield* Machine.boot(makeConnectionMachine(activeCount))
 
-    // Watch active count stream from another fiber
+    // Watch active count stream from another fiber — subscribes to the real ref
     yield* Stream.runForEach(
-      (yield* SubscriptionRef.make(0)).changes,
+      activeCount.changes,
       (n) => Effect.log(`active connections: ${n}`)
     ).pipe(Effect.fork)
 
@@ -440,9 +416,12 @@ Points of composition with Part I patterns:
 
 ```ts
 import * as Schedule from "effect/Schedule"
-const ResilientMachine = Machine.retry(ConnectionMachine, Schedule.exponential("500 millis").pipe(
-  Schedule.upTo("30 seconds")
-))
+// makeConnectionMachine returns a Machine; pass a concrete activeCount ref at boot time
+const activeCount = yield* SubscriptionRef.make(0)
+const ResilientMachine = Machine.retry(
+  makeConnectionMachine(activeCount),
+  Schedule.exponential("500 millis").pipe(Schedule.upTo("30 seconds"))
+)
 ```
 
 **PersistedCache with a Redis backing store.** Swap the in-process `KeyValueStore` for an `ioredis`-backed adapter (optional peer dependency):
