@@ -22,7 +22,7 @@ import OpenAI from "openai"
 async function chatWithAnthropic(userMessage: string): Promise<string> {
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
   const message = await client.messages.create({
-    model: "claude-opus-4-5",
+    model: "claude-opus-4-1-20250805",
     max_tokens: 1024,
     messages: [{ role: "user", content: userMessage }],
   })
@@ -54,7 +54,7 @@ Those two functions have identical semantics but incompatible shapes. Switching 
 
 Even within one provider, subtle differences compound. Calling Claude directly through Anthropic's API differs from calling it through Amazon Bedrock: the auth mechanism is SigV4 instead of an API key, some beta headers are unsupported, and Bedrock wraps everything in its own Converse API envelope. Code that handles both cases without `@effect/ai-amazon-bedrock` accumulates provider-specific conditionals throughout the business layer.
 
-The provider packages eliminate this by each supplying a `Layer<LanguageModel.LanguageModel, never, HttpClient.HttpClient>` that satisfies the abstract tag from Chapter 31. The agentic code you already wrote does not change when you change providers.
+The provider packages eliminate this by combining two layers — a client layer (e.g., `AnthropicClient.layer`) that requires `HttpClient.HttpClient`, and a model layer (e.g., `AnthropicLanguageModel.model`) that requires the client — which together produce a `Layer<LanguageModel.LanguageModel, never, HttpClient.HttpClient>` satisfying the abstract tag from Chapter 31. No single export has that combined type; `Layer.provide` composes them at the program boundary. The agentic code you already wrote does not change when you change providers.
 
 ---
 
@@ -75,7 +75,7 @@ const AnthropicLayer = AnthropicClient.layerConfig({
 }).pipe(Layer.provide(NodeHttpClient.layer))
 
 // 2. Model layer — choose which Claude model to use.
-const ModelLayer = AnthropicLanguageModel.model("claude-opus-4-5")
+const ModelLayer = AnthropicLanguageModel.model("claude-opus-4-1-20250805")
 
 // 3. Business logic — depends only on the abstract LanguageModel tag.
 const program = Effect.gen(function* () {
@@ -137,7 +137,7 @@ export const model = (
   AiModel.make("anthropic", layer({ model, config }))
 ```
 
-The `model` parameter is the Anthropic model identifier string (e.g., `"claude-opus-4-5"`, `"claude-3-5-sonnet-20241022"`). `config?` accepts optional inference parameters (`max_tokens`, `temperature`, `top_p`, and so on) defined in `Config.Service`. The return type is an `AiModel.Model` — a thin wrapper that bundles the `Layer` with a provider tag, letting Effect track which concrete model is in scope.
+The `model` parameter is the Anthropic model identifier string (e.g., `"claude-opus-4-1-20250805"`, `"claude-3-5-sonnet-20241022"`). `config?` accepts optional inference parameters (`max_tokens`, `temperature`, `top_p`, and so on) defined in `Config.Service`. The return type is an `AiModel.Model` — a thin wrapper that bundles the `Layer` with a provider tag, letting Effect track which concrete model is in scope.
 
 `AnthropicLanguageModel.layer(options)` builds the `Layer<LanguageModel.LanguageModel, never, AnthropicClient>` directly if you prefer the lower-level constructor. `layerWithTokenizer` merges the language model layer with `AnthropicTokenizer.layer` via `Layer.merge` — because the tokenizer has no dependency on `AnthropicClient`, it does not need to be provided through the client. Source: `repos/effect/packages/ai/anthropic/src/AnthropicLanguageModel.ts:392-410`.
 
@@ -145,7 +145,7 @@ The `model` parameter is the Anthropic model identifier string (e.g., `"claude-o
 
 `AnthropicTokenizer` wraps the `@anthropic-ai/tokenizer` WASM package as `Tokenizer.Tokenizer`. The `make` factory uses `Effect.try` to wrap the synchronous WASM call, surfacing any failure as `AiError.UnknownError` rather than an uncaught exception. Source: `repos/effect/packages/ai/anthropic/src/AnthropicTokenizer.ts:17-53`.
 
-Use `AnthropicLanguageModel.modelWithTokenizer("claude-opus-4-5")` to get both the language model and the tokenizer in one layer — useful for pre-flight token budget checks (see Chapter 31's `Tokenizer.truncate` example).
+Use `AnthropicLanguageModel.modelWithTokenizer("claude-opus-4-1-20250805")` to get both the language model and the tokenizer in one layer — useful for pre-flight token budget checks (see Chapter 31's `Tokenizer.truncate` example).
 
 **Streaming and the `createMessageStream` pipeline.**
 
@@ -216,7 +216,7 @@ Use `Mailbox` when you need an actor-style inbox with ordered delivery and lifec
 
 **`@effect/ai-google` — Gemini with safety settings and multimodal support.**
 
-`@effect/ai-google` connects to Google's Generative Language API (`generativelanguage.googleapis.com/v1beta`). The `GoogleLanguageModel.model(name, config?)` factory accepts a `Config.Service` typed as `Partial<Omit<GenerateContentRequest.Encoded, "contents" | "tools" | ...>>` — meaning callers pass `safetySettings`, `generationConfig`, and `cachedContent` as typed fields rather than opaque strings. Provider-defined tools include `GoogleSearch`, `GoogleSearchRetrieval`, `UrlContext`, and `CodeExecution`. A notable Gemma workaround is baked in: when the model name starts with `"gemma-"`, the system prompt is injected as a text prefix in the first user message because Gemma ignores the `systemInstruction` field. Source: `repos/effect/packages/ai/google/src/GoogleClient.ts:192-214` — `GoogleClient.layer` and `GoogleClient.layerConfig` declarations.
+`@effect/ai-google` connects to Google's Generative Language API (`generativelanguage.googleapis.com/v1beta`). The `GoogleLanguageModel.model(name, config?)` factory accepts a `Config.Service` typed as `Partial<Omit<GenerateContentRequest.Encoded, "contents" | "tools" | ...>>` — meaning callers pass `safetySettings`, `generationConfig`, and `cachedContent` as typed fields rather than opaque strings. Provider-defined tools include `GoogleSearch`, `GoogleSearchRetrieval`, `UrlContext`, and `CodeExecution`. A notable Gemma workaround is baked in: when the model name starts with `"gemma-"`, the system prompt is injected as a text prefix in the first user message because Gemma ignores the `systemInstruction` field. Source: `repos/effect/packages/ai/google/src/GoogleClient.ts:192-250` — `GoogleClient.layer` (line 192) and `GoogleClient.layerConfig` (line 220) declarations.
 
 **`@effect/ai-amazon-bedrock` — Claude and Nova models via AWS SigV4.**
 
@@ -317,7 +317,7 @@ const ProviderLayer = AnthropicClient.layerConfig({
   apiKey: Config.redacted("ANTHROPIC_API_KEY"),
 }).pipe(Layer.provide(NodeHttpClient.layer))
 
-const ModelLayer = AnthropicLanguageModel.model("claude-opus-4-5")
+const ModelLayer = AnthropicLanguageModel.model("claude-opus-4-1-20250805")
 
 // ── Program entry point ────────────────────────────────────────────────────
 
@@ -352,7 +352,7 @@ import { AnthropicLanguageModel } from "@effect/ai-anthropic"
 const FastLayer = AnthropicLanguageModel.model("claude-haiku-4-5")
 
 // Use the most capable model for complex reasoning
-const SmartLayer = AnthropicLanguageModel.model("claude-opus-4-5")
+const SmartLayer = AnthropicLanguageModel.model("claude-opus-4-1-20250805")
 ```
 
 **Structured output with `LanguageModel.generateObject`.**
@@ -425,7 +425,7 @@ const OpenAiProviderLayer = OpenAiClient.layerConfig({
 // Build the primary model layer; if AnthropicClient is unavailable in context,
 // Layer composition will fail. Switch the provider layer to OpenAi at the
 // program boundary to test fallback behaviour.
-const PrimaryModelLayer = AnthropicLanguageModel.model("claude-opus-4-5")
+const PrimaryModelLayer = AnthropicLanguageModel.model("claude-opus-4-1-20250805")
 const FallbackModelLayer = OpenAiLanguageModel.model("gpt-4o")
 ```
 
@@ -446,7 +446,7 @@ const BedrockLayer = AmazonBedrockClient.layerConfig({
 
 // Claude-on-Bedrock uses the Anthropic message format under the hood
 const BedrockModelLayer = AmazonBedrockLanguageModel.model(
-  "anthropic.claude-opus-4-5-20241022-v1:0"
+  "anthropic.claude-opus-4-20250514-v1:0"
 )
 ```
 
@@ -466,7 +466,7 @@ const OpenRouterLayer = OpenRouterClient.layerConfig({
 }).pipe(Layer.provide(NodeHttpClient.layer))
 
 // Route to any model OpenRouter supports — swap the string without changing layers
-const RouterModelLayer = OpenRouterLanguageModel.model("anthropic/claude-opus-4-5")
+const RouterModelLayer = OpenRouterLanguageModel.model("anthropic/claude-opus-4-1-20250805")
 ```
 
 ---
@@ -484,7 +484,7 @@ import Anthropic from "@anthropic-ai/sdk"
 async function summarise(text: string): Promise<string> {
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
   const msg = await client.messages.create({
-    model: "claude-opus-4-5",
+    model: "claude-opus-4-1-20250805",
     max_tokens: 512,
     messages: [{ role: "user", content: "Summarise: " + text }],
   })
@@ -542,7 +542,7 @@ const badRetry = <A>(effect: Effect.Effect<A, AiError.AiError>) =>
     Effect.retry(Schedule.recurs(3).pipe(
       // This condition is fine for Anthropic but may not hold for all providers
       Schedule.whileInput((e) =>
-        e._tag === "HttpResponseError" && (e.response.status === 529 || e.response.status === 529)
+        e._tag === "HttpResponseError" && e.response.status === 529
       )
     ))
   )
@@ -576,7 +576,7 @@ const goodRetry = <A>(effect: Effect.Effect<A, AiError.AiError>) =>
 - [Chapter 09 — Layer](../part-1-foundations/09-layer.md): all provider packages are wired as `Layer` values; `Layer.provide` and `Layer.merge` are the composition primitives.
 - [Chapter 14 — Schema part 1](../part-1-foundations/14-schema-part-1.md): `Schema.Class` is the basis for every generated wire type in `Generated.ts`; `Schema.decode` validates every SSE chunk.
 - [Chapter 33 — Observability with @effect/opentelemetry](33-opentelemetry.md): provider adapters automatically emit GenAI semantic-convention spans; application-level `Effect.withSpan` adds business context on top.
-- [Chapter 38 — Config and secrets](../part-2-tour/38-config-and-secrets.md): `Config.redacted` and `Redacted.Redacted` are the mechanism all five providers use to pass API keys without leaking them to logs or spans.
+- [Chapter 38 — Config and secrets](38-config-and-secrets.md): `Config.redacted` and `Redacted.Redacted` are the mechanism all five providers use to pass API keys without leaking them to logs or spans.
 - [Patterns catalog — Mailbox](../../research/02-patterns-catalog.md#mailbox--ordered-message-inbox): when to use `Mailbox` vs `Queue` vs `PubSub`, and the actor-library anti-pattern it replaces.
 - [Per-package note — @effect/ai-anthropic](../../research/packages/ai-anthropic.md): deep-dive into `Generated.ts`, module augmentation, cross-provider tool sharing with Bedrock, and open questions.
 - [Per-package note — @effect/ai-openai](../../research/packages/ai-openai.md): Responses API vs Chat Completions, stateful item IDs, `OpenAiEmbeddingModel`, and the `strict` JSON schema toggle.
