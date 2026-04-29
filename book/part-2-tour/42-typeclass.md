@@ -37,32 +37,9 @@ events.sort((a, b) => {
 
 There is no way to name the `ts` ordering and reuse it. `Array.sort` has no concept of composing orderings. Each of the three calls above is a new anonymous function that the next reader must interpret from scratch.
 
-The problem compounds with combination. Every team that needs to merge two maps, accumulate values, or reduce a list writes the same structural `if-else` by hand:
+The problem compounds with combination. Every team merging maps or accumulating values writes the same structural `if-else` by hand — `mergeCounts` vs `mergeMinLatency` are structurally identical except for the combining operation. Without a named abstraction for "combining values of type `A`," that structure cannot be extracted.
 
-```ts
-// Manually accumulating counts — no shared "combine" abstraction
-function mergeCounts(a: Map<string, number>, b: Map<string, number>): Map<string, number> {
-  const out = new Map(a)
-  for (const [k, v] of b) {
-    out.set(k, (out.get(k) ?? 0) + v)
-  }
-  return out
-}
-
-// The same pattern re-written for a different value type (min instead of sum)
-function mergeMinLatency(a: Map<string, number>, b: Map<string, number>): Map<string, number> {
-  const out = new Map(a)
-  for (const [k, v] of b) {
-    const existing = out.get(k)
-    out.set(k, existing === undefined ? v : Math.min(existing, v))
-  }
-  return out
-}
-```
-
-Both functions are structurally identical — the only difference is the combining operation. Without a named abstraction for "combining values of type `A`," that structure cannot be extracted.
-
-Finally, higher-kinded polymorphism — writing a function that works over both `Option<A>` and `Effect<A, E, R>` — requires higher-kinded types, which TypeScript does not natively support. Without an encoding, every generic algorithm is copy-pasted once per container type.
+Higher-kinded polymorphism — writing a function over both `Option<A>` and `Effect<A, E, R>` — requires higher-kinded types, which TypeScript does not natively support. Without an encoding, every generic algorithm is copy-pasted once per container type.
 
 `@effect/typeclass` solves all three problems by providing:
 1. A hierarchy of typed interfaces — `Order`, `Semigroup`, `Monoid`, `Functor`, `Monad`, and more — as named, reusable values.
@@ -115,10 +92,9 @@ The `Order.number` value — `(self, that) => self < that ? -1 : 1` — is defin
 
 `Equivalence` is the typeclass for structural equality. Chapter 18 introduced `Equal.equals`, which is built on the same principle. `@effect/typeclass` provides `Equivalence` as an interface you can implement for your own types and compose into larger structures.
 
-`Order` goes further: it defines a total ordering via a single function `(self: A, that: A) => -1 | 0 | 1`. The module lives in core `effect`, not in `@effect/typeclass`, but both packages export it under the same name:
+`Order` goes further: it defines a total ordering via a single function `(self: A, that: A) => -1 | 0 | 1`. `Order` lives only in core `effect` (`effect/Order`) — `@effect/typeclass` has no `Order.ts` and does not re-export `Order` from its index. `@effect/typeclass` imports `Order` internally for `Bounded` and other type classes, but you must always import it from `"effect"`.
 
 - **`effect/Order`** (`repos/effect/packages/effect/src/Order.ts:26-28`) — the canonical definition and instances (`Order.number`, `Order.string`, `Order.boolean`, `Order.bigint`).
-- `@effect/typeclass` re-exports `Order` for convenience, so you can import from either path.
 
 The core `Order` module also provides combinators for free:
 
@@ -128,92 +104,31 @@ The core `Order` module also provides combinators for free:
 
 ### Combination typeclasses: Semigroup and Monoid
 
-A `Semigroup<A>` is an interface with two methods (`repos/effect/packages/typeclass/src/Semigroup.ts:16-19`):
+A `Semigroup<A>` captures "two values of type `A` can be combined into one" (`repos/effect/packages/typeclass/src/Semigroup.ts:16-19`). It has two methods: `combine` and `combineMany`. `Semigroup.make` derives `combineMany` automatically, so in practice you only supply `combine`. Built-in constructors `Semigroup.min` and `Semigroup.max` take an `Order<A>` and pick the smaller or larger element (`repos/effect/packages/typeclass/src/Semigroup.ts:51-59`); `Semigroup.intercalate` joins values with a separator (`repos/effect/packages/typeclass/src/Semigroup.ts:95-101`).
 
-```ts
-interface Semigroup<A> {
-  readonly combine: (self: A, that: A) => A
-  readonly combineMany: (self: A, collection: Iterable<A>) => A
-}
-```
-
-It captures the idea of "two values of type `A` can be combined into one." The `combineMany` default is derived automatically when you use `Semigroup.make` (`repos/effect/packages/typeclass/src/Semigroup.ts:37-43`), so in practice you only supply `combine`.
-
-Built-in constructors include `Semigroup.min` and `Semigroup.max`, which take an `Order<A>` and return a `Semigroup<A>` that picks the smaller or larger element (`repos/effect/packages/typeclass/src/Semigroup.ts:51-59`). There is also `Semigroup.intercalate` for joining values with a separator (`repos/effect/packages/typeclass/src/Semigroup.ts:95-101`).
-
-A `Monoid<A>` extends `Semigroup<A>` with an `empty` element and a derived `combineAll` (`repos/effect/packages/typeclass/src/Monoid.ts:12-15`):
-
-```ts
-interface Monoid<A> extends Semigroup<A> {
-  readonly empty: A
-  readonly combineAll: (collection: Iterable<A>) => A
-}
-```
-
-The `empty` element is the identity for `combine` — `combine(x, empty) === combine(empty, x) === x`. For addition the empty is `0`; for string concatenation it is `""`; for boolean AND it is `true`. `Monoid.fromSemigroup` lifts any `Semigroup` to a `Monoid` by providing the `empty` value (`repos/effect/packages/typeclass/src/Monoid.ts:21-26`).
+A `Monoid<A>` extends `Semigroup<A>` with an `empty` element (`repos/effect/packages/typeclass/src/Monoid.ts:12-15`) — the identity for `combine`. `Monoid.fromSemigroup` lifts any `Semigroup` to a `Monoid` by providing the `empty` value (`repos/effect/packages/typeclass/src/Monoid.ts:21-26`).
 
 `Bounded` adds `minBound` and `maxBound` to an `Order`, forming a fully bounded total order (`repos/effect/packages/typeclass/src/Bounded.ts:15-19`). `Bounded.min` and `Bounded.max` derive `Monoid` instances whose empty values are the respective bounds — useful for accumulating extreme values over a collection.
 
 ### HKT typeclasses: Functor, Applicative, Monad
 
-Higher-kinded typeclasses require abstracting over a type constructor `F<_>`. TypeScript cannot express this natively. `@effect/typeclass` uses the `TypeLambda`/`Kind` encoding from `effect/HKT`: each data type declares an interface `extends TypeLambda` with a `type` field, and `Kind<F, R, O, E, A>` reconstructs the concrete type at compile time with zero runtime cost.
+TypeScript cannot natively abstract over a type constructor `F<_>`. `@effect/typeclass` uses the `TypeLambda`/`Kind` encoding from `effect/HKT`: each data type declares an interface `extends TypeLambda`, and `Kind<F, R, O, E, A>` reconstructs the concrete type at compile time with zero runtime cost.
 
-**Covariant (Functor)** is the typeclass for containers that support `map` (`repos/effect/packages/typeclass/src/Covariant.ts:12-17`):
+**Covariant (Functor)** provides `map` for containers (`repos/effect/packages/typeclass/src/Covariant.ts:12-17`). Every typeclass method carries dual-arity overloads (data-last for `pipe`, data-first for direct calls). `Option`, `Either`, `Array`, and `Effect` all have `Covariant` instances in `repos/effect/packages/typeclass/src/data/`.
 
-```ts
-interface Covariant<F extends TypeLambda> extends Invariant<F> {
-  readonly map: {
-    <A, B>(f: (a: A) => B): <R, O, E>(self: Kind<F, R, O, E, A>) => Kind<F, R, O, E, B>
-    <R, O, E, A, B>(self: Kind<F, R, O, E, A>, f: (a: A) => B): Kind<F, R, O, E, B>
-  }
-}
-```
+**Applicative** extends `SemiApplicative` (`product` for combining contexts) and `Product` (`of` for lifting pure values). `Applicative.getMonoid` lifts a `Monoid<A>` into `Monoid<F<A>>` — the mechanism behind `Traversable`'s parallel accumulation (`repos/effect/packages/typeclass/src/Applicative.ts:25-30`).
 
-The dual-arity signature (`data-last` and `data-first`) is present on every typeclass method, enabling both direct calls and `pipe`-based composition. `Option`, `Either`, `Array`, and `Effect` all have `Covariant` instances in `repos/effect/packages/typeclass/src/data/`.
-
-**Applicative** extends `SemiApplicative` (which provides `product` for combining contexts) and `Product` (which adds `of` for lifting pure values). The only additional export is `Applicative.getMonoid`, which lifts a `Monoid<A>` into `Monoid<F<A>>` by combining inner values under the applicative context (`repos/effect/packages/typeclass/src/Applicative.ts:25-30`). This is the mechanism that lets `Traversable` accumulate errors or run effects in parallel.
-
-**Monad** is remarkably compact (`repos/effect/packages/typeclass/src/Monad.ts:12`):
-
-```ts
-interface Monad<F extends TypeLambda> extends FlatMap<F>, Pointed<F> {}
-```
-
-It inherits `flatMap` from `FlatMap` and `of` from `Pointed`. The dictionary-passing style means that a function generic over `Monad<F>` works unchanged for `Option`, `Either`, `Effect`, and any future type that supplies the dictionary — without modifying the function.
+**Monad** inherits `flatMap` from `FlatMap` and `of` from `Pointed` (`repos/effect/packages/typeclass/src/Monad.ts:12`). A function generic over `Monad<F>` works unchanged for `Option`, `Either`, `Effect`, and any future type that supplies the dictionary.
 
 ### Traversal typeclasses: Foldable and Traversable
 
-**Foldable** exposes a single primitive — `reduce` — from which all other fold operations are derived (`repos/effect/packages/typeclass/src/Foldable.ts:15-20`):
+**Foldable** exposes `reduce` as its single primitive (`repos/effect/packages/typeclass/src/Foldable.ts:15-20`). `Foldable.combineMap` takes a `Monoid<M>` and a function `A → M` to fold a structure into a single value — sum a list, merge maps, or collect results all with the same generic function (`repos/effect/packages/typeclass/src/Foldable.ts:62-70`).
 
-```ts
-interface Foldable<F extends TypeLambda> extends TypeClass<F> {
-  readonly reduce: {
-    <A, B>(b: B, f: (b: B, a: A) => B): <R, O, E>(self: Kind<F, R, O, E, A>) => B
-    <R, O, E, A, B>(self: Kind<F, R, O, E, A>, b: B, f: (b: B, a: A) => B): B
-  }
-}
-```
-
-`Foldable.combineMap` takes a `Monoid<M>` and a function `A → M`, and folds the structure into a single `M` value (`repos/effect/packages/typeclass/src/Foldable.ts:62-70`). This is how you sum a list, collect all values into an array, or merge a collection of maps — all with the same generic function.
-
-**Traversable** is the typeclass for structure-preserving traversals that produce an effect (`repos/effect/packages/typeclass/src/Traversable.ts:12-24`):
-
-```ts
-interface Traversable<T extends TypeLambda> extends TypeClass<T> {
-  readonly traverse: <F extends TypeLambda>(F: Applicative<F>) => {
-    <A, R, O, E, B>(f: (a: A) => Kind<F, R, O, E, B>): <TR, TO, TE>(
-      self: Kind<T, TR, TO, TE, A>
-    ) => Kind<F, R, O, E, Kind<T, TR, TO, TE, B>>
-    // ... data-first overload
-  }
-}
-```
-
-`traverse` threads an `Applicative` through a container: given a `T<A>` and a function `A → F<B>`, it produces `F<T<B>>`. For `Effect` as the applicative, this runs all effects in the container and collects results, short-circuiting on the first failure. `Traversable.sequence` is the specialization where the function is the identity (`repos/effect/packages/typeclass/src/Traversable.ts:46-51`).
+**Traversable** threads an `Applicative` through a container (`repos/effect/packages/typeclass/src/Traversable.ts:12-24`): given a `T<A>` and `A → F<B>`, it produces `F<T<B>>`. For `Effect` as the applicative this runs all effects in the container and collects results, short-circuiting on the first failure. `Traversable.sequence` is the specialization where the function is the identity (`repos/effect/packages/typeclass/src/Traversable.ts:46-51`).
 
 ### SortedMap and SortedSet: Order as a first-class value
 
-`SortedMap` and `SortedSet` live in core `effect` (`repos/effect/packages/effect/src/SortedMap.ts`, `repos/effect/packages/effect/src/SortedSet.ts`). Both are backed by a red-black tree (Chapter 40 covers `RedBlackTree` directly). The key design choice is that the `Order` is stored *inside* the collection at construction time — you pass it once to `empty` or `fromIterable`, and the sort invariant is maintained automatically on every subsequent mutation.
+`SortedMap` and `SortedSet` live in core `effect` (`repos/effect/packages/effect/src/SortedMap.ts`, `repos/effect/packages/effect/src/SortedSet.ts`), backed by a red-black tree. The `Order` is stored inside the collection at construction time — pass it once to `empty` or `fromIterable` and the sort invariant is maintained automatically on every subsequent mutation.
 
 ```ts
 import { Order, SortedMap, SortedSet } from "effect"
@@ -266,9 +181,8 @@ The ordering lives in one place, is named, is composable, and is never repeated.
 The scenario: a metrics collector aggregates telemetry events. Events arrive in arbitrary order; the output must be time-ordered. Event counts for the same second are summed using a `Semigroup`. A final fold produces the grand total.
 
 ```ts
-import { Effect, Option, Order, SortedMap } from "effect"
-import { Semigroup, Monoid, Foldable } from "@effect/typeclass"
-import * as ArrayInstances from "@effect/typeclass/data/Array"
+import { Option, Order, SortedMap } from "effect"
+import { Semigroup, Monoid } from "@effect/typeclass"
 
 // ── Domain ────────────────────────────────────────────────────────────────────
 
