@@ -37,9 +37,9 @@ completion — but large enough to exercise every pattern that matters:
 - **Publishing discipline:** exports map, dual ESM/CJS, changesets, and JSDoc — the same checklist
   Effect's own packages follow.
 
-This chapter — Chapter 45 — commits no code. Its job is to orient you: what the package will look
-like when finished, why this domain was chosen, and which chapter handles which piece. Every
-subsequent chapter (46–60) maps to exactly one commit in the `worked-example/` repository.
+This chapter commits no code. Its job is to orient you: what the package will look like when
+finished, why this domain was chosen, and which chapter handles which piece. Each subsequent
+chapter (46–60) maps to exactly one commit in `worked-example/`.
 
 ---
 
@@ -83,23 +83,34 @@ It then shows the intended public usage in a TypeScript sketch — the full API 
 a single `Effect.gen` block:
 
 ```ts
-import { Cache, CacheKey } from "@example/effect-cache"
-import { Effect, Stream, Console } from "effect"
+import { Cache, CacheKey, CacheError } from "@example/effect-cache"
+import { Effect, Layer, Stream, Console } from "effect"
 
-const key = CacheKey.make("user:42")
+// 1. Make a branded key
+const key = CacheKey("user:42")
 
+// 2. Use the service via the dual API (data-last, pipe-friendly)
 const program = Effect.gen(function* () {
+  // set a value with a 60-second TTL override
   yield* Cache.set(key, { name: "Alice" }, { ttlMillis: 60_000 })
+
+  // get the value back (fails with CacheError.Missing if not found)
   const user = yield* Cache.get(key)
   console.log(user)
+
+  // explicit delete
   yield* Cache.delete(key)
+
+  // invalidate all entries (e.g. on config reload)
   yield* Cache.invalidate
 })
 
+// 3. Provide the in-memory layer (with background eviction)
 const main = program.pipe(
   Effect.provide(Cache.layerMemoryWithEviction)
 )
 
+// 4. Subscribe to cache events as a Stream
 const monitorEvents = Cache.events.pipe(
   Stream.tap((event) => Console.log("cache event", event)),
   Stream.runDrain
@@ -215,38 +226,30 @@ thin enough to fit the book while still demonstrating every authoring pattern.
 
 The `.make` constructor pattern established in Chapter 11 (Constructors) is the pattern this worked
 example will follow throughout. Every module in `effect-cache` exposes a `.make` factory: `Cache.make`,
-`CacheKey.make`, `MemoryStorage.make`. Naming consistency is not cosmetic — it is how readers of an
-Effect package discover its entry points without reading the source.
+`MemoryStorage.make`. Naming consistency is not cosmetic — it is how readers of an Effect package
+discover its entry points without reading the source.
 
 ---
 
 ## What's still missing
 
-This chapter leaves everything except the design documents unimplemented. Each bullet below names
-the chapter that fills the gap:
+This chapter leaves everything except the design documents unimplemented. Each bullet names the
+chapter that fills the gap:
 
-- **Chapter 46** — build setup: `package.json`, `tsconfig.json` variants, `vitest.config.ts`, and
-  `.gitignore` matching Effect monorepo conventions. Without this, nothing compiles.
-- **Chapter 47** — the `Cache` tag, `CacheService` interface, and the `.make` constructor stub.
-  This is the first TypeScript in the repository.
-- **Chapter 48** — `CacheError` tagged error variants. Until these exist, the error channel
-  is `never` and callers have no recovery surface.
+- **Chapter 46** — build setup: `package.json`, `tsconfig.json` variants, `vitest.config.ts`, `.gitignore`.
+- **Chapter 47** — `Cache` tag, `CacheService` interface, `.make` stub. First TypeScript in the repo.
+- **Chapter 48** — `CacheError` tagged error variants; error channel goes from `never` to useful.
 - **Chapter 49** — `CacheConfig` as a `Schema.Class` with `Config` integration.
-- **Chapter 50** — `CacheKey` branded type. Until this chapter, the signature uses raw `string`.
-- **Chapter 51** — `Cache.layerMemory` with the in-memory storage backend. The first runnable layer.
-- **Chapter 52** — `Cache.layerMemoryWithEviction` with the scoped eviction fiber. The first
-  `Layer.scoped` in the package.
-- **Chapter 53** — the dual API: `Cache.get`, `Cache.set`, `Cache.delete`, `Cache.invalidate` as
-  `dual(...)` overloads.
-- **Chapter 54** — the `internal/` module refactor: `storage.ts` abstract interface, re-exports
-  tightened.
-- **Chapter 55** — `CacheEvent` tagged enum and the `.events` stream via `PubSub.unbounded`.
-- **Chapter 56** — the test suite: `it.effect` and `it.scoped` with `@effect/vitest`.
-- **Chapter 57** — JSDoc: `@since`, `@category`, `@example` tags on every public export.
-- **Chapter 58** — exports map, `"type": "module"`, dual ESM/CJS, version policy.
-- **Chapter 59** — publishing checklist: changesets, peer dependencies, `CHANGELOG.md`.
-- **Chapter 60** — retrospective: `DESIGN.md` updated with what the implementation confirmed,
-  what it revised, and how each pattern from the catalog manifested.
+- **Chapter 50** — `CacheKey` branded type; replaces raw `string` in all signatures.
+- **Chapter 51** — `Cache.layerMemory` with in-memory backend. First runnable layer.
+- **Chapter 52** — `Cache.layerMemoryWithEviction` with scoped eviction fiber (`Layer.scoped`).
+- **Chapter 53** — dual API: `Cache.get`, `.set`, `.delete`, `.invalidate` as `dual(...)` overloads.
+- **Chapter 54** — `internal/` refactor: `storage.ts` abstract interface, tightened re-exports.
+- **Chapter 55** — `CacheEvent` tagged enum and `.events` stream via `PubSub.unbounded`.
+- **Chapter 56** — test suite: `it.effect` and `it.scoped` with `@effect/vitest`.
+- **Chapter 57** — JSDoc: `@since`, `@category`, `@example` on every public export.
+- **Chapters 58–59** — publishing concerns: exports map, changesets, `CHANGELOG.md`.
+- **Chapter 60** — retrospective: `DESIGN.md` updated with what the implementation confirmed and revised.
 
 ---
 
@@ -267,3 +270,6 @@ git commit -m "chore: initial README and design notes"
 - [`../part-2-tour/26-sql-drivers.md`](../part-2-tour/26-sql-drivers.md) — how `Cache.make` and `ScopedCache.make` appear in real driver code (prepared-statement memoization); motivation for the cache domain as worked example
 - [`../../research/02-patterns-catalog.md#make--of-constructors`](../../research/02-patterns-catalog.md#make--of-constructors) — formal entry for the `.make` / `.of` constructor pattern; the primary pattern foreshadowed in this chapter
 - [`../../research/packages/sql.md`](../../research/packages/sql.md) — research note for `@effect/sql`; covers the abstract-tag + pluggable-layer design that `effect-cache` mirrors at smaller scale
+- [Chapter 47 — Designing the public API](47-public-api.md) — where the Cache tag and CacheService interface land
+- [Chapter 56 — Testing with @effect/vitest](56-testing.md) — where the test suite proves the layer composition works
+- [Chapter 60 — Retrospective](60-retrospective.md) — where we re-read the package against the patterns catalog
