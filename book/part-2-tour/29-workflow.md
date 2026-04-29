@@ -10,7 +10,7 @@
 
 ## The problem
 
-Multi-step business processes are common in backend systems: place an order, charge a card, reserve inventory, trigger a shipment, send a confirmation email. In plain TypeScript the sequence is a chain of async function calls. The problem is not writing the happy path; the problem is what happens when any of those five steps fails, the process crashes halfway through, or a downstream service is temporarily unavailable.
+Multi-step business processes — place an order, charge a card, reserve inventory, trigger a shipment, send a confirmation email — are routine in backend systems. The problem is not writing the happy path; it is what happens when a step fails, the process crashes mid-execution, or a downstream service is temporarily unavailable.
 
 Consider the naive version:
 
@@ -24,13 +24,9 @@ async function processOrder(orderId: string): Promise<void> {
 }
 ```
 
-A crash on step 2 leaves the payment already taken but no inventory reserved, no shipment, and no email. On restart, re-running from the top charges the customer twice. You need idempotency keys passed manually to every external call, a checkpoint table in the database, retry logic with back-off, and a way to resume from exactly the step that failed.
+A crash on step 2 leaves the payment taken but no shipment or email. Re-running from the top charges the customer twice. Fixing this requires idempotency keys for every external call, a checkpoint table, retry back-off, and a resume mechanism — compounded by timers (a 24-hour sleep is lost on restart) and external callbacks (a payment webhook that must park the workflow and resume it later).
 
-These requirements compound. Timers must survive restarts — a "wait 24 hours then send a reminder" sleep is lost when the process dies. External callbacks (a payment webhook, a human approval) require the workflow to park itself, persist its state, and resume when the signal arrives. Debugging a half-executed run requires replaying the recorded journal, not re-running against live services.
-
-Teams typically solve this with a bespoke state machine persisted in a jobs table, ad-hoc retry queues, and a background polling loop. The result is distributed across a database schema, a queue worker, and a business-logic module — none sharing types with the others.
-
-`@effect/workflow` solves the problem by recording every unit of work (an `Activity`) in a persistent journal. If the process dies, the engine replays the journal on restart: completed activities return their stored result immediately without executing again; incomplete activities resume from scratch. Timers and external signals are also journaled (`DurableClock`, `DurableDeferred`), making the entire execution reproducible.
+`@effect/workflow` solves this by recording every unit of work (`Activity`) in a persistent journal. On restart the engine replays the journal: completed activities return their stored result; incomplete ones resume from scratch. Timers and external signals are journaled too (`DurableClock`, `DurableDeferred`).
 
 > **`@experimental` notice.** `@effect/workflow` carries the `@experimental` tag. The API may change between minor versions of the `effect` monorepo. Treat the signatures shown here as accurate for `effect@3.21.2` (SHA `39c934c1476be389f7469433910fdf30fc4dad82`) and review the changelog before upgrading.
 
@@ -94,7 +90,7 @@ Effect.runPromise(
 `Workflow.make` is the entry point for every durable execution unit.
 
 ```ts
-// repos/effect/packages/workflow/src/Workflow.ts:260-280
+// repos/effect/packages/workflow/src/Workflow.ts:259-280
 export const make = <
   const Name extends string,
   Payload extends Schema.Struct.Fields | AnyStructSchema,
@@ -111,9 +107,9 @@ export const make = <
 }): Workflow<Name, ..., Success, Error>
 ```
 
-The four type parameters correspond directly to what Chapter 14 called a Schema shape: `Payload` defines the input record; `Success` and `Error` are the typed happy-path and failure schemas. The engine encodes every payload and result using these schemas before writing to the journal, and decodes them on replay. A workflow that omits `success` defaults to `Schema.Void`; one that omits `error` defaults to `Schema.Never`.
+The type parameters map to a Schema shape (Chapter 14): `Payload` defines the input record; `Success` and `Error` are the typed outcome schemas — `Schema.Void` and `Schema.Never` by default. The engine encodes every payload and result via these schemas before writing to the journal, and decodes on replay.
 
-The `idempotencyKey` function derives a stable string from the payload. The engine hashes `"${name}-${idempotencyKey(payload)}"` via SHA-256 to produce a deterministic `executionId` (`repos/effect/packages/workflow/src/Workflow.ts:281`). Two calls with the same idempotency key share one execution — the second call either waits for the in-flight execution or returns the stored result if it already completed.
+`idempotencyKey` derives a stable string from the payload. The engine hashes `"${name}-${idempotencyKey(payload)}"` via SHA-256 to produce a deterministic `executionId` (`repos/effect/packages/workflow/src/Workflow.ts:281`). Two calls with the same key share one execution — the second call awaits the in-flight run or returns the stored result.
 
 `Workflow.make` returns an object with several methods:
 - `.execute(payload)` — start or resume an execution and await completion.
@@ -122,14 +118,14 @@ The `idempotencyKey` function derives a stable string from the payload. The engi
 - `.resume(executionId)` — un-park a suspended execution.
 - `.toLayer(handler)` — produces a `Layer` that registers the workflow handler with the engine.
 
-The `Result` union is the serializable journal form: `Workflow.Complete` wraps an `Exit.Exit<A, E>`, and `Workflow.Suspended` is a `Schema.TaggedClass` that round-trips through the journal (`repos/effect/packages/workflow/src/Workflow.ts:400-490`). Both can be persisted and re-hydrated without losing type safety.
+The `Result` union is the serializable journal form: `Workflow.Complete` wraps an `Exit.Exit<A, E>`, and `Workflow.Suspended` is a `Schema.TaggedClass` that round-trips through the journal (`repos/effect/packages/workflow/src/Workflow.ts:407-490`).
 
 ### `Activity.make` — the idempotent unit of work
 
 An `Activity` is the minimal durable building block. It wraps any `Effect` and gives it a name. The engine checks the journal before running: if a stored result exists for `"${executionId}/${activityName}/${attempt}"`, that result is returned immediately without re-executing the effect.
 
 ```ts
-// repos/effect/packages/workflow/src/Activity.ts:85-95
+// repos/effect/packages/workflow/src/Activity.ts:81-95
 export const make = <R, Success, Error>(options: {
   readonly name: string
   readonly success?: Success
@@ -139,18 +135,18 @@ export const make = <R, Success, Error>(options: {
 }): Activity<Success, Error, ...>
 ```
 
-`Activity` is an `Effect` itself — it implements `Effectable.CommitPrototype` — so you use it directly with `yield*` inside a workflow handler. The journal key includes an attempt counter, so if you call the same activity inside `Activity.retry`, each attempt gets a distinct slot (`repos/effect/packages/workflow/src/Activity.ts:163-168`).
+`Activity` is an `Effect` itself — it implements `Effectable.CommitPrototype` — so you use it directly with `yield*` inside a workflow handler. The journal key includes an attempt counter: `Activity.retry` increments the `CurrentAttempt` reference between retries, and `Activity.make`'s internal `makeExecute` uses that counter to allocate a distinct journal slot per attempt (`repos/effect/packages/workflow/src/Activity.ts:148-168`).
 
-`Activity.idempotencyKey` derives a stable SHA-256 key from the current `executionId` and a name, useful for idempotent external API calls (e.g., stripe charges) where you need to pass a stable key to the third-party service (`repos/effect/packages/workflow/src/Activity.ts:183-199`).
+`Activity.idempotencyKey` derives a stable SHA-256 key from `executionId` and a name — pass it to external APIs (e.g. Stripe charges) that require exactly-once semantics (`repos/effect/packages/workflow/src/Activity.ts:183-199`).
 
-`Activity.raceAll` accepts multiple activities and persists whichever finishes first, discarding the others (`repos/effect/packages/workflow/src/Activity.ts:205-226`). The engine stores the winning result as a `DurableDeferred` so the outcome is stable across restarts.
+`Activity.raceAll` accepts multiple activities and persists whichever finishes first (`repos/effect/packages/workflow/src/Activity.ts:205-226`). The winning result is stored as a `DurableDeferred` so the outcome is stable across restarts.
 
 ### `DurableClock.sleep` — sleeps that survive restarts
 
 A plain `Effect.sleep("24 hours")` inside a long-running workflow is lost when the process restarts. `DurableClock.sleep` replaces it with a journaled sleep.
 
 ```ts
-// repos/effect/packages/workflow/src/DurableClock.ts:61-108
+// repos/effect/packages/workflow/src/DurableClock.ts:57-108
 export const sleep: (options: {
   readonly name: string
   readonly duration: Duration.DurationInput
@@ -164,10 +160,10 @@ For durations at or below the `inMemoryThreshold` (default 60 seconds), `Durable
 
 ### `DurableDeferred` — promises that survive restarts
 
-`DurableDeferred` is the workflow-level equivalent of `Deferred` from Chapter 36 (concurrency primitives), but backed by the journal rather than an in-memory fiber latch.
+`DurableDeferred` is the workflow-level equivalent of `Deferred` (which Chapter 36 covers in detail), but backed by the journal rather than an in-memory fiber latch.
 
 ```ts
-// repos/effect/packages/workflow/src/DurableDeferred.ts:62-85
+// repos/effect/packages/workflow/src/DurableDeferred.ts:58-85
 export const make = <
   Success extends Schema.Schema.Any = typeof Schema.Void,
   Error extends Schema.Schema.All = typeof Schema.Never
@@ -177,34 +173,34 @@ export const make = <
 }): DurableDeferred<Success, Error>
 ```
 
-`DurableDeferred.await(deferred)` checks the journal for a stored result. If none exists, it calls `Workflow.suspend`, which self-interrupts the fiber without failing the workflow (`repos/effect/packages/workflow/src/Workflow.ts:677-682`). The engine then reschedules a fresh fiber; when an external caller eventually supplies the result via `DurableDeferred.done(token, exit)`, the engine resumes the workflow from the park point.
+`DurableDeferred.await(deferred)` checks the journal for a stored result. If none exists, it calls `Workflow.suspend`, which self-interrupts the fiber without failing the workflow (`repos/effect/packages/workflow/src/Workflow.ts:674-682`). The engine then reschedules a fresh fiber; when an external caller eventually supplies the result via `DurableDeferred.done(token, exit)`, the engine resumes the workflow from the park point.
 
-`DurableDeferred.token` produces a Base64-URL opaque string encoding `(workflowName, executionId, deferredName)`. You hand this token to an external system (a webhook, a human approver, a payment gateway); when the event arrives, the caller supplies the token back to `DurableDeferred.done`. No database join or lookup table required — the token is self-describing (`repos/effect/packages/workflow/src/DurableDeferred.ts:253-293`).
+`DurableDeferred.token` produces a Base64-URL opaque string encoding `(workflowName, executionId, deferredName)`. You hand this token to an external system (a webhook, a human approver, a payment gateway); when the event arrives, the caller supplies the token back to `DurableDeferred.done`. No database join or lookup table required — the token is self-describing (`repos/effect/packages/workflow/src/DurableDeferred.ts:253-310`).
 
 ### Engine layers — wiring the back-end
 
-The engine is a `Context.Tag` service (`WorkflowEngine`) defined at `repos/effect/packages/workflow/src/WorkflowEngine.ts:24-183`. Any back-end must satisfy its interface: `register`, `execute`, `poll`, `interrupt`, `resume`, `activityExecute`, `deferredResult`, `deferredDone`, and `scheduleClock`.
+The engine is a `Context.Tag` service (`WorkflowEngine`) defined at `repos/effect/packages/workflow/src/WorkflowEngine.ts:20-183`. Any back-end must satisfy its interface: `register`, `execute`, `poll`, `interrupt`, `resume`, `activityExecute`, `deferredResult`, `deferredDone`, and `scheduleClock`.
 
-`WorkflowEngine.makeUnsafe(options: Encoded)` adapts a lower-level untyped interface into the typed service. It centralises all `Schema.encode` / `Schema.decode` calls, so a new back-end only implements plain-object reads and writes (`repos/effect/packages/workflow/src/WorkflowEngine.ts:317-458`).
+`WorkflowEngine.makeUnsafe(options: Encoded)` adapts a lower-level untyped interface into the typed service. It centralises all `Schema.encode` / `Schema.decode` calls, so a new back-end only implements plain-object reads and writes (`repos/effect/packages/workflow/src/WorkflowEngine.ts:313-458`).
 
 For tests, `WorkflowEngine.layerMemory` provides a complete in-memory implementation:
 
 ```ts
-// repos/effect/packages/workflow/src/WorkflowEngine.ts:468
+// repos/effect/packages/workflow/src/WorkflowEngine.ts:464-468
 export const layerMemory: Layer.Layer<WorkflowEngine> = Layer.scoped(
   WorkflowEngine,
   Effect.gen(function*() { /* in-memory Maps + FiberMap for clocks */ })
 )
 ```
 
-For production, the back-end is `ClusterWorkflowEngine.layer` from `@effect/cluster`. Chapter 30 covers the cluster integration in detail. The `@effect/workflow` package itself has no dependency on `@effect/cluster` — the separation is intentional so the engine can be swapped without changing workflow code.
+For production, use `ClusterWorkflowEngine.layer` from `@effect/cluster` (Chapter 30). The `@effect/workflow` package has no dependency on `@effect/cluster` — the separation lets you swap engines without changing workflow code.
 
 ### Compensation — the Saga pattern as a scope finalizer
 
-`Workflow.withCompensation` registers a cleanup effect that fires only when the workflow fails. It is expressed as a `Scope.addFinalizerExit` on the workflow's long-lived scope, so the Effect resource model handles rollback ordering automatically:
+`Workflow.withCompensation` registers a cleanup effect that fires only when the workflow fails, expressed as a `Scope.addFinalizerExit`. Registered compensations run in reverse acquisition order on failure — payment refunded, inventory unreserved — without a separate orchestration layer:
 
 ```ts
-// repos/effect/packages/workflow/src/Workflow.ts:653-672
+// repos/effect/packages/workflow/src/Workflow.ts:642-672
 export const withCompensation: {
   <A, R2>(
     compensation: (value: A, cause: Cause.Cause<unknown>) => Effect.Effect<void, never, R2>
@@ -213,22 +209,14 @@ export const withCompensation: {
 }
 ```
 
-When the entire workflow succeeds the finalizer is skipped. When it fails, every registered compensation runs in reverse acquisition order — payment refunded, inventory unreserved — without a separate orchestration layer.
-
-Two `Context.Reference` annotations opt into alternative failure semantics:
-- `Workflow.CaptureDefects` (default `true`) — captures defects and includes them in the result, preventing unstructured errors from crashing the journal.
-- `Workflow.SuspendOnFailure` (default `false`) — instead of failing the workflow on error, parks it as `Suspended` so an operator can inspect and manually resume.
-
-Both annotations use `defaultValue` so they require no constructor parameter change (`repos/effect/packages/workflow/src/Workflow.ts:693-711`).
+Two `Context.Reference` annotations adjust failure semantics: `Workflow.CaptureDefects` (default `true`) captures defects into the result; `Workflow.SuspendOnFailure` (default `false`) parks the workflow as `Suspended` on error so an operator can inspect and resume. Both use `defaultValue` and require no constructor change (`repos/effect/packages/workflow/src/Workflow.ts:693-711`).
 
 ### Reloadable — hot-reloading the engine layer at runtime
 
-`@effect/workflow` is designed to run alongside long-lived services: database connection pools, credential stores, feature flag loaders. Any of these services may need to be replaced at runtime without stopping in-flight workflows.
-
-`Reloadable`, introduced in this chapter, solves exactly that problem. It wraps a `Layer` in a `ScopedRef`, allowing the underlying service to be re-initialized while consumers hold onto the outer `Reloadable<I>` reference.
+`Reloadable` wraps any `Layer` in a `ScopedRef`, letting the underlying service be re-initialized at runtime while consumers keep the same outer reference. Two constructors:
 
 ```ts
-// repos/effect/packages/effect/src/Reloadable.ts:65-68
+// repos/effect/packages/effect/src/Reloadable.ts:60-68
 export const auto: <I, S, E, In, R>(
   tag: Context.Tag<I, S>,
   options: {
@@ -237,28 +225,23 @@ export const auto: <I, S, E, In, R>(
   }
 ) => Layer.Layer<Reloadable<I>, E, R | In>
 
-// repos/effect/packages/effect/src/Reloadable.ts:101-104
+// repos/effect/packages/effect/src/Reloadable.ts:98-104
 export const manual: <I, S, In, E>(
   tag: Context.Tag<I, S>,
   options: { readonly layer: Layer.Layer<I, E, In> }
 ) => Layer.Layer<Reloadable<I>, E, In>
 ```
 
-`Reloadable.auto` schedules periodic reloads on a `Schedule`. `Reloadable.manual` exposes `Reloadable.reload(tag)` so you can trigger the swap from a SIGHUP handler or an admin endpoint. `Reloadable.get(tag)` retrieves the current live instance.
-
-In a workflow service, you might wrap a credentials layer so that a rotating API key is reloaded every hour without draining the workflow engine or losing in-flight executions:
+`auto` schedules periodic reloads on a `Schedule`; `manual` exposes `Reloadable.reload(tag)` for on-demand swaps (SIGHUP, admin endpoint). `Reloadable.get(tag)` retrieves the current live instance.
 
 ```ts
 import { Reloadable, Schedule } from "effect"
 
-// Reload the StripeClient layer every hour.
 const StripeClientReloadable = Reloadable.auto(StripeClient, {
   layer: StripeClient.live,
   schedule: Schedule.fixed("1 hour")
 })
 
-// Workflows that call `yield* StripeClient` see the fresh instance
-// after each reload — no restart needed.
 const AppLayer = Layer.mergeAll(
   WorkflowEngine.layerMemory,
   CheckoutWorkflowLive,
@@ -266,7 +249,7 @@ const AppLayer = Layer.mergeAll(
 )
 ```
 
-The key insight is that `Reloadable` replaces the layer value, not the fiber tree. In-flight workflow fibers that have already acquired the old `StripeClient` finish using it; newly scheduled activity fibers pick up the next instance. The workflow engine is undisturbed throughout.
+`Reloadable` replaces the layer value, not the fiber tree. In-flight workflow fibers finish on the old `StripeClient`; newly scheduled activity fibers pick up the next instance.
 
 The patterns catalog entry is at [`Reloadable — hot-reload a service layer at runtime`](../../research/02-patterns-catalog.md#reloadable--hot-reload-a-service-layer-at-runtime).
 
@@ -445,15 +428,13 @@ yield* Effect.log(`Send this token to the approver: ${token}`)
 const { approved } = yield* DurableDeferred.await(approvalDeferred)
 ```
 
-**4. Workflow-level annotations.** Opt into `SuspendOnFailure` to park on error instead of failing, allowing operator inspection and manual `Workflow.resume`:
+**4. Workflow-level annotations and sub-workflows.** `SuspendOnFailure` parks on error instead of failing, enabling operator inspection and manual resume. Sub-workflow composition works by calling `yield* AnotherWorkflow.execute(...)` inside a handler — the engine tracks the parent–child relationship:
 
 ```ts
 const SafeCheckout = CheckoutWorkflow.annotate(Workflow.SuspendOnFailure, true)
 ```
 
-**5. Sub-workflow composition.** One workflow calls `yield* AnotherWorkflow.execute(...)` inside a handler — the engine tracks the parent–child relationship and can resume the parent when the child completes (`repos/effect/packages/workflow/src/WorkflowEngine.ts:526-531` uses `parent` in `ExecutionState`).
-
-**6. `WorkflowProxy` — expose workflows over RPC.** `WorkflowProxy.toRpcGroup` derives an `RpcGroup` (Chapter 28 pattern) from a list of workflows. Each workflow gets `execute`, `discard`, and `resume` endpoints automatically (`repos/effect/packages/workflow/src/WorkflowProxy.ts:45-71`):
+**5. `WorkflowProxy` — expose workflows over RPC.** `WorkflowProxy.toRpcGroup` derives an `RpcGroup` (Chapter 28 pattern) from a list of workflows. Each workflow gets `execute`, `discard`, and `resume` endpoints automatically (`repos/effect/packages/workflow/src/WorkflowProxy.ts:45-71`):
 
 ```ts
 import { WorkflowProxy, WorkflowProxyServer } from "@effect/workflow"
