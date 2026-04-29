@@ -42,13 +42,17 @@ const transfer = (
 The traditional fix is a mutex:
 
 ```ts
-import { Effect, Ref, Semaphore } from "effect"
+import { Effect, Ref } from "effect"
 
 // Manual lock — composability and deadlock risk
+// (Note: Effect's Semaphore is not a top-level module export; it is an
+// interface returned by Effect.makeSemaphore. The real deadlock risk is
+// that holding a lock across async operations makes cross-account
+// transfers susceptible to lock-order inversion.)
 const makeTransferService = Effect.gen(function* () {
   const lock = yield* Effect.makeSemaphore(1)
   return (from: Ref.Ref<number>, to: Ref.Ref<number>, amount: number) =>
-    Semaphore.withPermits(1)(lock)(
+    lock.withPermits(1)(
       Effect.gen(function* () {
         const bal = yield* Ref.get(from)
         if (bal < amount) return yield* Effect.fail("InsufficientFunds" as const)
@@ -206,9 +210,9 @@ export const make: <A>(value: A) => STM.STM<TRef<A>> = internal.make
 Core operations — all return `STM`, all composable inside `STM.gen`:
 
 - `TRef.get(ref)` — reads the current value (`repos/effect/packages/effect/src/TRef.ts:69-73`)
-- `TRef.set(ref, value)` — writes a new value (`repos/effect/packages/effect/src/TRef.ts:126-133`)
-- `TRef.update(ref, f)` — applies a pure function (`repos/effect/packages/effect/src/TRef.ts:144-151`)
-- `TRef.modify(ref, f)` — reads and writes in one step, returning a derived value (`repos/effect/packages/effect/src/TRef.ts:108-115`)
+- `TRef.set(ref, value)` — writes a new value (`repos/effect/packages/effect/src/TRef.ts:126-130`)
+- `TRef.update(ref, f)` — applies a pure function (`repos/effect/packages/effect/src/TRef.ts:144-148`)
+- `TRef.modify(ref, f)` — reads and writes in one step, returning a derived value (`repos/effect/packages/effect/src/TRef.ts:108-112`)
 
 **`TQueue`** — a transactional queue. `TQueue.offer` and `TQueue.take` can participate in the same transaction as `TRef` updates:
 
@@ -298,7 +302,7 @@ const openAccount = (
     STM.gen(function* () {
       const balance = yield* TRef.make(initialBalance)
       const lock = yield* TSemaphore.make(1)
-      yield* TMap.set(registry, id, { balance, lock })
+      yield* TMap.set(registry, id, { balance, transferLock: lock })
     })
   )
 
@@ -327,13 +331,19 @@ const transfer = (
       : Effect.fail(new InsufficientFunds({ accountId: toId, requested: amount, available: 0 }))
 
     // Atomically debit + credit inside one STM transaction.
+    // TSemaphore.acquire is an STM operation: acquiring the per-account
+    // rate-limiting permit is part of the same atomic transaction as the
+    // balance update, so no concurrent transfer can slip through while
+    // this one is in-flight.
     // STM.check blocks (retries) until balance is sufficient.
     yield* STM.commit(
       STM.gen(function* () {
+        yield* TSemaphore.acquire(from.transferLock)
         const fromBal = yield* TRef.get(from.balance)
         yield* STM.check(() => fromBal >= amount)
         yield* TRef.update(from.balance, (n) => n - amount)
         yield* TRef.update(to.balance, (n) => n + amount)
+        yield* TSemaphore.release(from.transferLock)
       })
     )
   })
