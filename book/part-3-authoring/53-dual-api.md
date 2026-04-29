@@ -109,7 +109,7 @@ export const get: {
 } = dual(2, (cache: CacheService, key: CacheKey) => cache.get(key))
 ```
 
-The arity is `2` because the data-first form takes two arguments: `(cache, key)`. When called with one argument (`key` only), `dual` returns `(cache: CacheService) => cache.get(key)`. The data-last type signature `(key: CacheKey): Effect<..., Cache>` does not literally return a function-of-service — instead, TypeScript sees the return type as `Effect<..., Cache>`, which reads the service from the environment at execution time. This matches Effect's convention throughout the core library (see `Effect.flatMap` at `repos/effect/packages/effect/src/Effect.ts:8844-8847`).
+The arity is `2` because the data-first form takes two arguments: `(cache, key)`. When called with one argument (`key` only), `dual` returns `(cache: CacheService) => cache.get(key)`. The data-last type signature `(key: CacheKey): Effect<..., Cache>` does not literally return a function-of-service — instead, TypeScript sees the return type as `Effect<..., Cache>`, which reads the service from the environment at execution time. This matches Effect's convention throughout the core library (see `Effect.flatMap` at `repos/effect/packages/effect/src/Effect.ts:8782-8847`).
 
 The full `Cache.ts` lines are `worked-example/src/Cache.ts:97-100`.
 
@@ -191,7 +191,7 @@ The trade-off is that callers must always supply an explicit TTL at the `Cache.s
 
 ### The `delete` reserved-word workaround
 
-JavaScript's reserved words (`delete`, `in`, `new`, `typeof`, and others) cannot appear as top-level variable declarations. The three options are: rename the export (`remove`), prefix it (`_delete`), or declare internally under a prefixed name and re-export with `export { _delete as delete }`. The third option is used here because callers see the idiomatic `Cache.delete` name, IDEs autocomplete it correctly, and the rename is entirely invisible at the call site. The precedent exists in the Effect source: see `Array.ts` in the effect repository, which similarly wraps reserved identifiers.
+JavaScript's reserved words (`delete`, `in`, `new`, `typeof`, and others) cannot appear as top-level variable declarations. The three options are: rename the export (`remove`), prefix it (`_delete`), or declare internally under a prefixed name and re-export with `export { _delete as delete }`. The third option is used here because callers see the idiomatic `Cache.delete` name, IDEs autocomplete it correctly, and the rename is entirely invisible at the call site. The precedent exists in the Effect source: `repos/effect/packages/effect/src/FiberRef.ts` uses `export { _delete as delete }` for the same reason.
 
 ### Why `invalidate` is a value
 
