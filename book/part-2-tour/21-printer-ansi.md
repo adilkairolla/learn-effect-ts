@@ -36,7 +36,7 @@ function printHelp(commands: ReadonlyArray<{ name: string; desc: string }>) {
 
 This breaks in several ways at once.
 
-**Line-width calculations are corrupted.** ANSI escape sequences are invisible characters — `\x1b[32m` occupies zero columns in the terminal but six bytes in the string. Any width-measurement code counts those bytes as real characters, producing misaligned output.
+**Line-width calculations are corrupted.** ANSI escape sequences are invisible characters — `\x1b[32m` occupies zero columns in the terminal but five bytes in the string. Any width-measurement code counts those bytes as real characters, producing misaligned output.
 
 **Layout and color are entangled.** The manual `" ".repeat(20 - cmd.name.length)` works only because `cmd.name` has no embedded escapes. Add color and the length calculation drifts. `chalk.stripAnsi` is a band-aid that requires measuring twice.
 
@@ -102,7 +102,7 @@ The `AnsiDoc` module re-exports the entire `@effect/printer/Doc` value namespace
 
 ### Ansi — the annotation type
 
-The `Ansi` interface is the concrete annotation. Its internal shape (`repos/effect/packages/printer-ansi/src/internal/ansi.ts:16-24`) is a record of optional `SGR` fields:
+The `Ansi` interface is the concrete annotation. Its internal shape (undocumented internal; see `repos/effect/packages/printer-ansi/src/internal/ansi.ts:16-24`) is a record of optional `SGR` fields:
 
 ```ts
 interface AnsiImpl extends Ansi.Ansi {
@@ -119,7 +119,7 @@ interface AnsiImpl extends Ansi.Ansi {
 Each field is `Option<SGR>` — unset (`None`) means "inherit from surrounding context"; set (`Some`) means "apply this attribute." At `repos/effect/packages/printer-ansi/src/Ansi.ts:46-68`, four text-style constructors are exported:
 
 - `Ansi.bold` — renders as SGR code 1
-- `Ansi.italicized` — renders as SGR code 3 (**NOTE**: not widely supported; `repos/effect/packages/printer-ansi/src/internal/sgr.ts:68-72`)
+- `Ansi.italicized` — renders as SGR code 3 (**NOTE**: not widely supported; `repos/effect/packages/printer-ansi/src/internal/sgr.ts:68-74`)
 - `Ansi.strikethrough` — renders as SGR code 9
 - `Ansi.underlined` — renders as SGR code 4
 
@@ -127,19 +127,20 @@ Each field is `Option<SGR>` — unset (`None`) means "inherit from surrounding c
 
 ```ts
 import * as Ansi from "@effect/printer-ansi/Ansi"
+import { pipe } from "effect/Function"
 
 // data-first
 const boldRed = Ansi.combine(Ansi.red, Ansi.bold)
 
 // data-last (pipe-friendly)
-const boldRed2 = Ansi.red.pipe(Ansi.combine(Ansi.bold))
+const boldRed2 = pipe(Ansi.red, Ansi.combine(Ansi.bold))
 ```
 
-`Ansi.combine` uses "first wins" per attribute via `getFirstSomeSemigroup` (`repos/effect/packages/printer-ansi/src/internal/ansi.ts:47-49`). When the same attribute appears in both arguments, the left argument wins. This gives inner annotations priority over outer ones: annotating a word with `Ansi.blue` inside a sentence annotated with `Ansi.red` leaves the word blue and the rest red.
+`Ansi.combine` uses "first wins" per attribute via `getFirstSomeSemigroup` (undocumented internal helper; `repos/effect/packages/printer-ansi/src/internal/ansi.ts:47-49`). When the same attribute appears in both arguments, the left argument wins. This gives inner annotations priority over outer ones: annotating a word with `Ansi.blue` inside a sentence annotated with `Ansi.red` leaves the word blue and the rest red.
 
 ### Color — the eight-color discriminated union
 
-`Color` is a discriminated union of eight ANSI base colors — `repos/effect/packages/printer-ansi/src/Color.ts:15`:
+`Color` is a discriminated union of eight ANSI base colors — `repos/effect/packages/printer-ansi/src/Color.ts:11-15`:
 
 ```ts
 export type Color = Black | Red | Green | Yellow | Blue | Magenta | Cyan | White
@@ -149,13 +150,13 @@ Each variant carries only a `_tag`. The `Color.toCode` destructor at `repos/effe
 
 ### SGR — Select Graphic Rendition (internal detail)
 
-`SGR` lives exclusively in `repos/effect/packages/printer-ansi/src/internal/sgr.ts` and is never re-exported. Its discriminated union has six variants (`repos/effect/packages/printer-ansi/src/internal/sgr.ts:29-36`): `Reset`, `SetBold`, `SetColor`, `SetItalicized`, `SetStrikethrough`, `SetUnderlined`. Each variant maps to a numeric escape code via `SGR.toCode`. The `stringify` function (`repos/effect/packages/printer-ansi/src/Ansi.ts:499-503`) always prepends a `Reset` before applying merged attributes, preventing style bleed between adjacent annotated regions.
+`SGR` lives exclusively in `repos/effect/packages/printer-ansi/src/internal/sgr.ts` and is never re-exported. Its discriminated union has six variants (`repos/effect/packages/printer-ansi/src/internal/sgr.ts:23-36`): `Reset`, `SetBold`, `SetColor`, `SetItalicized`, `SetStrikethrough`, `SetUnderlined`. Each variant maps to a numeric escape code via `SGR.toCode`. The `stringify` function (re-export stub at `repos/effect/packages/printer-ansi/src/Ansi.ts:503`; implementation at `repos/effect/packages/printer-ansi/src/internal/ansi.ts:353-367`) always prepends a `Reset` before applying merged attributes, preventing style bleed between adjacent annotated regions.
 
 ### The render pass — annotation stack
 
 `AnsiDoc.render` runs the printer's layout algorithm and then walks the resulting `DocStream<Ansi>` with a stack of active `Ansi` values (`repos/effect/packages/printer-ansi/src/internal/ansiRender.ts:61-113`). On each `PushAnnotationStream` event, the incoming `Ansi` is combined with the top-of-stack and the merged result is stringified. On `PopAnnotationStream`, the prior stack entry is re-emitted, automatically restoring the outer style. Nesting `bold` inside `red` produces `\x1b[0;31;1m` for the inner span and `\x1b[0;31m` for the resumption of outer red — no global mutable state involved.
 
-Like `@effect/printer`, the walk is stack-safe: each recursive call is wrapped in `Effect.suspend` and driven by `Effect.runSync` as a trampoline (`repos/effect/packages/printer-ansi/src/internal/ansiRender.ts:36-37`). The public API is fully synchronous.
+Like `@effect/printer`, the walk is stack-safe: each recursive call is wrapped in `Effect.suspend` and driven by `Effect.runSync` as a trampoline (`repos/effect/packages/printer-ansi/src/internal/ansiRender.ts:77-109`; `renderSafe` is an undocumented internal at line 61). The public API is fully synchronous.
 
 ### Dual ESM/CJS export pattern
 
@@ -197,7 +198,7 @@ The same four-entry structure appears in the core `effect` package (`repos/effec
 
 ## A production example
 
-The following renders a colored CLI help screen. It composes `AnsiDoc` values using the combinators from Chapter 20 and uses `Ansi.annotate` to apply color and weight. The result illustrates why keeping layout and color separate matters: the two-column alignment logic uses `Doc.fill` and `Doc.align` — neither function knows or cares that the command names will be rendered in green.
+The following renders a colored CLI help screen. It composes `AnsiDoc` values using the combinators from Chapter 20 and uses `Doc.annotate` to apply color and weight. The result illustrates why keeping layout and color separate matters: the two-column alignment logic uses `Doc.fill` — the function knows nothing about the color annotations its content carries.
 
 ```ts
 import * as Ansi from "@effect/printer-ansi/Ansi"
@@ -233,8 +234,8 @@ const aliasSection = (cmd: CommandEntry): Doc.AnsiDoc =>
 const commandRow = (cmd: CommandEntry): Doc.AnsiDoc =>
   Doc.hsep([
     Doc.fill(
-      20,
-      Doc.hsep([styledName(cmd), aliasSection(cmd)])
+      Doc.hsep([styledName(cmd), aliasSection(cmd)]),
+      20
     ),
     Doc.text(cmd.description).pipe(Doc.annotate(Ansi.white))
   ])
@@ -277,7 +278,7 @@ const program = Effect.gen(function*() {
 Effect.runSync(program)
 ```
 
-Key observations. `Doc.fill(20, ...)` pads or wraps its content to occupy exactly 20 columns — the color annotations inside it do not affect that count because they are invisible to the layout pass. `Ansi.combine(Ansi.green, Ansi.bold)` stacks two attributes on the same annotation using the monoid structure described in the Tour section. The `Effect.gen` / `yield*` wrapping keeps the I/O side-effect (`Console.log`) inside the Effect system, consistent with the patterns from [Chapter 05](../part-1-foundations/05-effect-gen.md).
+Key observations. `Doc.fill(doc, 20)` pads its content with spaces up to 20 columns (does nothing if the content is already wider; wrapping to the next line is `fillBreak`'s job) — the color annotations inside it do not affect that count because they are invisible to the layout pass. `Ansi.combine(Ansi.green, Ansi.bold)` stacks two attributes on the same annotation using the monoid structure described in the Tour section. The `Effect.gen` / `yield*` wrapping keeps the I/O side-effect (`Console.log`) inside the Effect system, consistent with the patterns from [Chapter 05](../part-1-foundations/05-effect-gen.md).
 
 ---
 
@@ -386,16 +387,16 @@ import chalk from "chalk"
 import * as Doc from "@effect/printer-ansi/AnsiDoc"
 
 const name = chalk.green("deploy")  // string, not AnsiDoc
-const row = Doc.fill(20, Doc.text(name))  // measures 16 bytes, not 6 chars
+const row = Doc.fill(Doc.text(name), 20)  // measures 16 bytes, not 6 chars
 ```
 
-`chalk.green("deploy")` returns a string with embedded escapes. When passed to `Doc.text`, the printer counts the escape bytes as visible characters. `Doc.fill(20, ...)` then pads for 20 minus 16 (wrong) instead of 20 minus 6 (correct). Annotate after constructing the `Doc`:
+`chalk.green("deploy")` returns a string with embedded escapes. When passed to `Doc.text`, the printer counts the escape bytes as visible characters. `Doc.fill(doc, 20)` then pads for 20 minus 16 (wrong) instead of 20 minus 6 (correct). Annotate after constructing the `Doc`:
 
 ```ts
 import * as Ansi from "@effect/printer-ansi/Ansi"
 import * as Doc from "@effect/printer-ansi/AnsiDoc"
 
-const row = Doc.fill(20, Doc.text("deploy").pipe(Doc.annotate(Ansi.green)))
+const row = Doc.fill(Doc.text("deploy").pipe(Doc.annotate(Ansi.green)), 20)
 ```
 
 **Wrong: re-defining `Ansi` or `AnsiDoc` as local types.**
