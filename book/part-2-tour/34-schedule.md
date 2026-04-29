@@ -112,7 +112,7 @@ The model is described in full at `repos/effect/packages/effect/src/Schedule.ts:
 **`Schedule.recurs(n)`** runs exactly `n` more times and then stops (`repos/effect/packages/effect/src/Schedule.ts:1596-1604`). It produces a count of recurrences. Used alone it retries immediately with no delay — useful in tests. Combined with a delay schedule via `compose`, it caps the total number of attempts.
 
 ```ts
-import { Schedule, Effect } from "effect"
+import { Schedule, Duration, Effect } from "effect"
 
 // Runs at most 5 times, no delay (test-friendly)
 const finite: Schedule<number> = Schedule.recurs(5)
@@ -156,11 +156,8 @@ const standard = Schedule.exponential("100 millis").pipe(
 ```ts
 import { Schedule } from "effect"
 
-// Retry up to 5 times OR up to 30 seconds, whichever comes first
-const cappedByBoth = Schedule.intersect(
-  Schedule.recurs(5),
-  Schedule.upTo("30 seconds")
-)
+// Cap recurs(5) at 30 seconds wall-clock time — stops whichever limit hits first
+const cappedByBoth = Schedule.recurs(5).pipe(Schedule.upTo("30 seconds"))
 ```
 
 **`Schedule.tapOutput(f)`** (`repos/effect/packages/effect/src/Schedule.ts:1815-1829`) runs an effectful side action after each schedule step without altering the schedule's behaviour. Use it to emit a metric or log each retry attempt.
@@ -187,7 +184,7 @@ const selectiveRetry = Schedule.exponential("100 millis").pipe(
 
 For calendar-based scheduling — "run at 03:00 UTC every night" — Effect provides `Cron` and `DateTime`, both in the core `effect` package.
 
-**`Cron.parse(expression, tz?)`** (`repos/effect/packages/effect/src/Cron.ts:293-302`) parses a standard five-or-six-field cron expression into a typed `Cron` value. It returns `Either<Cron, ParseError>`, so the failure is explicit and recoverable. The optional `tz` argument accepts a `DateTime.TimeZone` or an IANA timezone string, making the schedule time-zone-aware.
+**`Cron.parse(expression, tz?)`** (`repos/effect/packages/effect/src/Cron.ts:271-302`) parses a standard five-or-six-field cron expression into a typed `Cron` value. It returns `Either<Cron, ParseError>`, so the failure is explicit and recoverable. The optional `tz` argument accepts a `DateTime.TimeZone` or an IANA timezone string, making the schedule time-zone-aware.
 
 ```ts
 import { Cron, Either } from "effect"
@@ -236,8 +233,7 @@ import {
   Data,
   Cron,
   DateTime,
-  Either,
-  Duration
+  Either
 } from "effect"
 
 // ── Typed errors ──────────────────────────────────────────────────────────────
@@ -294,11 +290,11 @@ const resilientFetch = (url: string) =>
 
 // ── Cron-driven nightly job ───────────────────────────────────────────────────
 
-// repos/effect/packages/effect/src/Cron.ts:293-302   parse
+// repos/effect/packages/effect/src/Cron.ts:271-302   parse
 // repos/effect/packages/effect/src/Schedule.ts:631-644  cron
 const cleanupCron = Cron.parse("0 3 * * *") // 03:00 UTC daily
 
-const dailyCleanupJob: Effect.Effect<void, never> = Either.match(cleanupCron, {
+const dailyCleanupJob: Effect.Effect<[number, number], never> = Either.match(cleanupCron, {
   onLeft: (err) => Effect.die(new Error(`invalid cron: ${err.message}`)),
   onRight: (cronValue) =>
     Effect.repeat(
