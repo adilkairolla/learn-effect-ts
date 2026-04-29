@@ -29,7 +29,7 @@ const findUser = (id: number) =>
   })
 ```
 
-That `Effect.tryPromise` wrapper has three problems. First, it drops the `SqlError` type: the error is untyped `unknown` until you cast it. Second, it breaks transactions. If `findUser` runs inside `client.withTransaction(...)`, the transaction connection is threaded through a `FiberRef` in the Effect runtime. `Effect.tryPromise` crosses the Effect–Promise boundary, and that `FiberRef` context is not available on the other side. The query runs on a fresh connection from the pool, outside the transaction. Third, it loses fiber-level cancellation: if the fiber is interrupted while the Promise is in flight, the Postgres server continues executing the query.
+That `Effect.tryPromise` wrapper has three problems. First, it drops the `SqlError` type: the error is untyped `unknown` until you cast it. Second, it breaks transactions. If `findUser` runs inside `client.withTransaction(...)`, the transaction connection is threaded through a `FiberRef` in the Effect runtime. `Effect.tryPromise` crosses the Effect–Promise boundary, and that `FiberRef` context is not available on the other side. The query runs on a fresh connection from the pool, outside the transaction. Third, it loses fiber-level cancellation: an interrupted fiber cannot stop the in-flight Postgres query.
 
 The same problems apply to every Kysely query. And there is a second problem that appears before any query runs: connection strings. A production database URL looks like `postgres://alice:s3cr3t@db.example.com:5432/myapp`. If you pass that string to a driver layer config and the config object is logged or serialized into an OpenTelemetry span (which happens automatically for Layer errors), the password leaks. The query-builder integration packages must pair with `Redacted` from `effect` to keep credentials out of structured logs.
 
@@ -90,7 +90,7 @@ The key line is `yield* db.select().from(users)`. No `.execute()`, no `Effect.pr
 **The dialect modules.** Each module follows an identical shape. Taking Postgres as the example (`repos/effect/packages/sql-drizzle/src/Pg.ts:1-68`):
 
 ```ts
-// repos/effect/packages/sql-drizzle/src/Pg.ts:16-47
+// repos/effect/packages/sql-drizzle/src/Pg.ts:16-53
 /**
  * @since 1.0.0
  * @category constructors
@@ -406,7 +406,7 @@ const program = Effect.gen(function* () {
 **Schema-typed results.** Drizzle returns rows as its own inferred types; Kysely returns rows typed by your `Database` interface. Both skip `SqlSchema.findAll` validation. If you need `ParseError` type safety from Effect Schema (Chapter 14), add a decode step:
 
 ```ts
-import { Schema } from "@effect/schema"
+import { Schema } from "effect"
 import { Effect } from "effect"
 
 const UserSchema = Schema.Struct({ id: Schema.Number, name: Schema.String })
@@ -418,8 +418,6 @@ const findUserById = (id: number) =>
     return yield* Schema.decodeUnknown(Schema.Array(UserSchema))(rows)
   })
 ```
-
-**Drizzle migrations with drizzle-kit.** Drizzle has a companion CLI tool, `drizzle-kit`, for generating and running schema migrations. `drizzle-kit` operates outside the Effect runtime — it reads your schema files and outputs SQL migration files or runs them via a direct database connection you configure in `drizzle.config.ts`. The `@effect/sql-drizzle` package does not integrate with `drizzle-kit`; migration execution stays in `drizzle-kit`'s own CLI or in your deploy pipeline. For migrations inside Effect programs, `@effect/sql` provides `SqlSchema.findAll` and `SqlClient.withTransaction` as the building blocks (Chapter 25).
 
 ---
 
