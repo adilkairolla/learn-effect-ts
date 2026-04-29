@@ -100,7 +100,7 @@ Both sides share `GreetGroup`. The Schema for `name` and the return type `String
 `Rpc.make` is the smallest unit in `@effect/rpc`. It produces an immutable descriptor that carries all the metadata for one remote procedure: tag string, payload schema, success schema, error schema, and a `stream` flag.
 
 ```ts
-// repos/effect/packages/rpc/src/Rpc.ts:644-696
+// repos/effect/packages/rpc/src/Rpc.ts:641-696
 export const make = <
   const Tag extends string,
   Payload extends Schema.Schema.Any | Schema.Struct.Fields = typeof Schema.Void,
@@ -122,7 +122,7 @@ The `Rpc<Tag, Payload, Success, Error>` type carries four parameters:
 - `Success` — the happy-path schema. When `stream: true` this is wrapped in `RpcSchema.Stream`, making it a `Stream<A, E>` on both sides.
 - `Error` — a typed failure schema, encoded and decoded across the wire. This is how `UserNotFound` stays `UserNotFound` end-to-end.
 
-The `stream: true` option is handled by wrapping the success schema in a `Schema.declare`-based sentinel (`repos/effect/packages/rpc/src/RpcSchema.ts:17-24`). The server detects this flag with `RpcSchema.isStreamSchema` and routes the call through `streamEffect` instead of a plain `Effect` handler. The client detects the same flag and returns a `Stream` rather than a single Effect. Every other layer of the stack — serialization, middleware, test mode — reads the same sentinel.
+The `stream: true` option is handled by wrapping the success schema in a `Schema.declare`-based sentinel (`repos/effect/packages/rpc/src/RpcSchema.ts:17-93`). The server detects this flag with `RpcSchema.isStreamSchema` and routes the call through `streamEffect` instead of a plain `Effect` handler. The client detects the same flag and returns a `Stream` rather than a single Effect. Every other layer of the stack — serialization, middleware, test mode — reads the same sentinel.
 
 ```ts
 import { Rpc } from "@effect/rpc"
@@ -171,7 +171,7 @@ const RemoveTodo = Rpc.make("RemoveTodo", {
 class TodosGroup extends RpcGroup.make(AddTodo, ListTodos, RemoveTodo) {}
 ```
 
-`RpcGroup` exposes three composition helpers on the interface (`repos/effect/packages/rpc/src/RpcGroup.ts:34-65`):
+`RpcGroup` exposes three composition helpers on the interface (`repos/effect/packages/rpc/src/RpcGroup.ts:30-65`):
 - `.add(...rpcs)` — append more procedures.
 - `.merge(...groups)` — union two groups; useful when splitting a large API surface across files.
 - `.middleware(M)` — attach a middleware to all procedures in the group at the point of the call.
@@ -202,7 +202,7 @@ Chapters 14 and 15 covered `Schema.Struct`, `Schema.Class`, transforms, and refi
 
 ### `RpcServer.layer` and `layerHttpRouter`
 
-`RpcServer.layer` is the core server runtime. It takes the group, wires handler layers to a `Protocol` service, manages per-client fiber sets, and propagates distributed traces (`repos/effect/packages/rpc/src/RpcServer.ts:736-752`):
+`RpcServer.layer` is the core server runtime. It takes the group, wires handler layers to a `Protocol` service, manages per-client fiber sets, and propagates distributed traces (`repos/effect/packages/rpc/src/RpcServer.ts:732-752`):
 
 ```ts
 export const layer = <Rpcs extends Rpc.Any>(
@@ -211,9 +211,9 @@ export const layer = <Rpcs extends Rpc.Any>(
 ): Layer.Layer<never, never, Protocol | Rpc.ToHandler<Rpcs> | ...>
 ```
 
-`Protocol` is a `Context.Tag` class (`repos/effect/packages/rpc/src/RpcServer.ts:793-813`) that abstracts the transport. Swapping HTTP for WebSockets or a Worker thread is done by swapping the `Protocol` layer only — the handler logic is unchanged.
+`Protocol` is a `Context.Tag` class (`repos/effect/packages/rpc/src/RpcServer.ts:789-813`) that abstracts the transport. Swapping HTTP for WebSockets or a Worker thread is done by swapping the `Protocol` layer only — the handler logic is unchanged.
 
-`RpcServer.layerHttpRouter` is the convenience wrapper that composes `layer` with a protocol layer (`repos/effect/packages/rpc/src/RpcServer.ts:763-787`). It defaults to WebSocket transport for low-latency streaming and can be switched to plain HTTP:
+`RpcServer.layerHttpRouter` is the convenience wrapper that composes `layer` with a protocol layer (`repos/effect/packages/rpc/src/RpcServer.ts:754-787`). It defaults to WebSocket transport for low-latency streaming and can be switched to plain HTTP:
 
 ```ts
 import { RpcServer, RpcSerialization } from "@effect/rpc"
@@ -224,7 +224,7 @@ import { createServer } from "node:http"
 const AppLive = RpcServer.layerHttpRouter({
   group: TodosGroup,
   path: "/todos",
-  protocol: "http" // or "websocket" (default)
+  protocol: "http" // omit for WebSocket (default)
 }).pipe(
   Layer.provide(TodosLive),
   Layer.provide(RpcSerialization.layerJson),
@@ -238,6 +238,7 @@ const AppLive = RpcServer.layerHttpRouter({
 
 ```ts
 import { RpcClient } from "@effect/rpc"
+import { Effect } from "effect"
 
 const program = Effect.gen(function*() {
   const client = yield* RpcClient.make(TodosGroup)
@@ -246,11 +247,11 @@ const program = Effect.gen(function*() {
   const todo = yield* client.AddTodo({ text: "buy milk" })
 
   // Fully typed: Effect<Array<{ id: string; text: string }>, RpcClientError>
-  const todos = yield* client.ListTodos({})
+  const todos = yield* client.ListTodos(undefined)
 })
 ```
 
-`layerProtocolHttp` wires the client to an HTTP endpoint (`repos/effect/packages/rpc/src/RpcClient.ts:920-933`). `layerProtocolSocket` connects to a raw socket server with optional reconnect scheduling (`repos/effect/packages/rpc/src/RpcClient.ts:1249-1256`).
+`layerProtocolHttp` wires the client to an HTTP endpoint (`repos/effect/packages/rpc/src/RpcClient.ts:916-933`). `layerProtocolSocket` connects to a raw socket server with optional reconnect scheduling (`repos/effect/packages/rpc/src/RpcClient.ts:1249-1256`).
 
 `withHeaders` and `withHeadersEffect` are dual functions for attaching request headers to a block of client calls — useful for passing auth tokens without threading them through every call site (`repos/effect/packages/rpc/src/RpcClient.ts:787-794`):
 
@@ -263,7 +264,7 @@ const authed = RpcClient.withHeaders(program, { Authorization: `Bearer ${token}`
 
 ### Serialization
 
-`RpcSerialization` is a context tag whose service describes `unsafeMake() => Parser`, `contentType`, and `includesFraming` (`repos/effect/packages/rpc/src/RpcSerialization.ts:14-18`). Four implementations ship out of the box:
+`RpcSerialization` is a context tag whose service describes `unsafeMake() => Parser`, `contentType`, and `includesFraming` (`repos/effect/packages/rpc/src/RpcSerialization.ts:11-18`). Four implementations ship out of the box:
 
 - `layerJson` — `application/json`, one message per HTTP body.
 - `layerNdjson` — newline-delimited JSON with framing, suitable for streaming over HTTP.
@@ -274,11 +275,11 @@ Swapping wire format requires only swapping the serialization layer on both clie
 
 ### Middleware
 
-`RpcMiddleware` lets you inject cross-cutting concerns — authentication, logging, rate limiting — that run before every handler in a group. A middleware tag is created with `RpcMiddleware.Tag` and declares what context it `provides` (so handlers can depend on it) and what errors it may fail with (`repos/effect/packages/rpc/src/RpcMiddleware.ts:98-116`).
+`RpcMiddleware` lets you inject cross-cutting concerns — authentication, logging, rate limiting — that run before every handler in a group. A middleware tag is created with `RpcMiddleware.Tag` and declares what context it `provides` (so handlers can depend on it) and what errors it may fail with (`repos/effect/packages/rpc/src/RpcMiddleware.ts:94-116`).
 
 ```ts
 import { RpcMiddleware } from "@effect/rpc"
-import { Context, Effect, Schema } from "effect"
+import { Context, Effect, Layer, Schema } from "effect"
 
 class AuthUser extends Context.Tag("AuthUser")<AuthUser, { userId: string }>() {}
 class Unauthorized extends Schema.TaggedError<Unauthorized>()("Unauthorized", {}) {}
@@ -298,11 +299,11 @@ const AuthMiddlewareLive = Layer.succeed(AuthMiddleware, (opts) =>
 )
 ```
 
-Attach it to specific RPCs via `.pipe(Rpc.middleware(AuthMiddleware))` or to all RPCs in a group via `group.middleware(AuthMiddleware)`.
+Attach it to a specific RPC via the instance method `GetUser.middleware(AuthMiddleware)`, or to all RPCs in a group via `group.middleware(AuthMiddleware)`.
 
 ### `RpcTest.makeClient` — in-memory testing
 
-`RpcTest.makeClient` wires the server's `makeNoSerialization` and the client's `makeNoSerialization` together in a single `Effect.gen` with no protocol layer and no serialization (`repos/effect/packages/rpc/src/RpcTest.ts:15-41`). This gives full type safety with zero network overhead:
+`RpcTest.makeClient` wires the server's `makeNoSerialization` and the client's `makeNoSerialization` together in a single `Effect.gen` with no protocol layer and no serialization (`repos/effect/packages/rpc/src/RpcTest.ts:11-41`). This gives full type safety with zero network overhead:
 
 ```ts
 import { RpcTest } from "@effect/rpc"
@@ -311,74 +312,14 @@ import { Effect } from "effect"
 const test = Effect.gen(function*() {
   const client = yield* RpcTest.makeClient(TodosGroup)
   const todo = yield* client.AddTodo({ text: "test item" })
-  const todos = yield* client.ListTodos({})
+  const todos = yield* client.ListTodos(undefined)
   console.assert(todos.length === 1)
 }).pipe(Effect.provide(TodosLive))
 ```
 
 ### ConfigProvider — loading server configuration from the environment
 
-`@effect/rpc` servers are typically deployed with runtime configuration: a port number, a base URL, an auth secret. The `ConfigProvider` pattern (introduced in this chapter) is how Effect reads configuration from the environment without scattering `process.env` reads throughout the code.
-
-`ConfigProvider.fromEnv` is the production source (`repos/effect/packages/effect/src/ConfigProvider.ts:183`). It reads from `process.env` and is the default when you call `Effect.runPromise` — no explicit setup required.
-
-`ConfigProvider.fromMap` creates an in-memory provider from a `Map<string, string>` (`repos/effect/packages/effect/src/ConfigProvider.ts:210-211`). It is the testing alternative to `process.env` mutation.
-
-`ConfigProvider.fromJson` creates a provider from a structured JSON object (`repos/effect/packages/effect/src/ConfigProvider.ts:200`). Use it when configuration comes from a JSON file loaded at startup rather than flat environment variables.
-
-```ts
-import { Config, ConfigProvider, Effect, Layer, Schema } from "effect"
-
-// Describe the server config as a Schema struct for documentation value.
-class ServerConfig extends Schema.Class<ServerConfig>("ServerConfig")({
-  port: Schema.NumberFromString,
-  baseUrl: Schema.String,
-  authSecret: Schema.String
-}) {}
-
-// Load it from the environment.
-const loadConfig = Effect.all({
-  port: Config.integer("PORT"),
-  baseUrl: Config.string("BASE_URL"),
-  authSecret: Config.string("AUTH_SECRET")
-})
-
-// Production: fromEnv() is the default; no Layer.setConfigProvider needed.
-// Test: inject values without touching process.env.
-const testConfigLayer = Layer.setConfigProvider(
-  ConfigProvider.fromMap(new Map([
-    ["PORT", "3000"],
-    ["BASE_URL", "http://localhost:3000"],
-    ["AUTH_SECRET", "test-secret"]
-  ]))
-)
-```
-
-Wire the config into the server layer:
-
-```ts
-import { RpcServer, RpcSerialization } from "@effect/rpc"
-import { NodeHttpServer, NodeRuntime } from "@effect/platform-node"
-import { Config, Effect, Layer } from "effect"
-import { createServer } from "node:http"
-
-const ServerFromEnv = Effect.gen(function*() {
-  const port = yield* Config.integer("RPC_PORT")
-  const serverLayer = RpcServer.layerHttpRouter({
-    group: TodosGroup,
-    path: "/todos"
-  }).pipe(
-    Layer.provide(TodosLive),
-    Layer.provide(RpcSerialization.layerJson),
-    Layer.provide(NodeHttpServer.layer(createServer, { port }))
-  )
-  return serverLayer
-}).pipe(Layer.unwrapEffect)
-
-NodeRuntime.runMain(Layer.launch(ServerFromEnv))
-```
-
-In test, the layer is provided with `Layer.provide(testConfigLayer)` to inject a `ConfigProvider.fromMap(...)` that does not touch `process.env`. This pattern composes cleanly with the rest of the Effect stack and is explored further in Chapter 38 (Config and secrets — typed environment loading).
+Use `Layer.setConfigProvider(ConfigProvider.fromMap(...))` in tests to inject configuration without touching `process.env`; omit it for production, where `ConfigProvider.fromEnv` (`repos/effect/packages/effect/src/ConfigProvider.ts:183`) is the default. `ConfigProvider.fromJson` (`repos/effect/packages/effect/src/ConfigProvider.ts:193`) covers the case of a JSON file loaded at startup. `ConfigProvider.fromMap` (`repos/effect/packages/effect/src/ConfigProvider.ts:203`) is the standard test double. Chapter 38 covers these constructors in depth.
 
 ---
 
@@ -475,7 +416,7 @@ const ServerFromEnv = Effect.gen(function*() {
 const clientProgram = Effect.gen(function*() {
   const client = yield* RpcClient.make(TodosGroup)
   const todo = yield* client.AddTodo({ text: "buy milk" })
-  const todos = yield* client.ListTodos({})
+  const todos = yield* client.ListTodos(undefined)
   console.log(todos)
   yield* client.RemoveTodo({ id: todo.id })
 })
