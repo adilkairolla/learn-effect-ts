@@ -19,13 +19,11 @@ cache.set({ userId: 42 }, "alice")
 console.log(cache.get({ userId: 42 })) // undefined
 ```
 
-The lookup returns `undefined` because `{ userId: 42 } !== { userId: 42 }` by reference. Every lookup creates a fresh object literal that has never been stored in the map. This is the most common subtle bug in JS codebases that try to use composite keys.
+The lookup returns `undefined` because `{ userId: 42 } !== { userId: 42 }` by reference — a fresh object literal is never the same reference as the stored one.
 
-Arrays add their own pain. JavaScript's `Array.unshift` mutates the array in place and copies every existing element to make room — O(n) and destructive. If you want a persistent "history" or "stack" data structure, you are left implementing your own linked list or accepting the performance cost.
+`Array.unshift` mutates in place and copies every element — O(n) and destructive. There is also no built-in sorted map, ordered set, prefix-indexed collection, or persistent tree.
 
-There is also no built-in sorted map, no ordered set that maintains a sort invariant on insert, no prefix-indexed collection, and no persistent tree. The moment you need "give me all log entries between timestamp A and timestamp B" from an in-memory structure, you are reaching for a sorted array and a binary-search helper that you wrote yourself.
-
-Effect ships a complete suite of persistent, immutable collection types that solve these problems. They are not experimental — they have been stable since Effect 2.0 and are used extensively in Effect's own internals. The five types this chapter covers are:
+Effect ships a complete suite of persistent, immutable collections. Stable since Effect 2.0 and used in Effect's own internals. The five types this chapter covers are:
 
 - **`HashMap`** — a hash-array mapped trie keyed by structural equality (`Equal.equals`), not reference equality. Correct with value-typed keys.
 - **`HashSet`** — a structural-equality set backed by the same HAMT internals. Correct deduplication for value objects.
@@ -33,7 +31,7 @@ Effect ships a complete suite of persistent, immutable collection types that sol
 - **`RedBlackTree`** — a self-balancing BST with O(log n) insert and ordered range traversal. The foundation for `SortedMap` and `SortedSet` (those are covered in Chapter 42 — typeclass).
 - **`Trie`** — a string-keyed prefix tree for O(prefix-length) lookups and `keysWithPrefix` queries.
 
-All five are part of the `effect` core package, imported from the same entry point.
+All five are in the `effect` core package, imported from the same entry point.
 
 ## The minimal example
 
@@ -66,11 +64,11 @@ const missing: Option.Option<string> = HashMap.get(users, UserId("acme", 99))
 console.log(HashMap.size(users)) // 2
 ```
 
-The `Data.struct` call produces an object whose `Equal.equals` and `Hash.hash` implementations compare by value (see Chapter 18 for the full mechanics). Without that, `HashMap` would behave identically to a plain JS `Map` — lookups would always miss.
+`Data.struct` produces an object whose `Equal.equals` and `Hash.hash` compare by value (Chapter 18). Without it, `HashMap` behaves like a plain JS `Map` — lookups always miss.
 
 ## Tour
 
-This section walks the API surface of each of the five collection types. Every name cited here is a real export from the pinned source; none are invented.
+This section walks the API surface of each collection type. Every name cited is a real export from the pinned source.
 
 ### HashMap — structural-equality keyed map
 
@@ -96,25 +94,23 @@ const m2 = HashMap.fromIterable([["a", 1], ["b", 2]])
 
 **Lookup and mutation** (`repos/effect/packages/effect/src/HashMap.ts:146-391`):
 
-- `HashMap.get(map, key)` — returns `Option<V>`. Safe lookup; no `undefined` leakage. (`repos/effect/packages/effect/src/HashMap.ts:146-149`)
-- `HashMap.has(map, key)` — returns `boolean`. (`repos/effect/packages/effect/src/HashMap.ts:180-183`)
-- `HashMap.set(map, key, value)` — returns a new `HashMap` with the entry added or replaced. (`repos/effect/packages/effect/src/HashMap.ts:224-227`)
-- `HashMap.remove(map, key)` — returns a new map without the entry. (`repos/effect/packages/effect/src/HashMap.ts:388-391`)
-- `HashMap.modify(map, key, f)` — update an existing value in place (functionally). (`repos/effect/packages/effect/src/HashMap.ts:367-370`)
-- `HashMap.modifyAt(map, key, f)` — takes `Option<V>` and returns `Option<V>`; covers insert-or-update atomically. (`repos/effect/packages/effect/src/HashMap.ts:340-343`)
-- `HashMap.union(a, b)` — merge two maps, with `b` winning on key conflicts. (`repos/effect/packages/effect/src/HashMap.ts:377-380`)
+- `HashMap.get(map, key)` — returns `Option<V>`. Safe lookup; no `undefined` leakage. (`repos/effect/packages/effect/src/HashMap.ts:139-149`)
+- `HashMap.has(map, key)` — returns `boolean`. (`repos/effect/packages/effect/src/HashMap.ts:174-183`)
+- `HashMap.set(map, key, value)` — returns a new `HashMap` with the entry added or replaced. (`repos/effect/packages/effect/src/HashMap.ts:218-227`)
+- `HashMap.remove(map, key)` — returns a new map without the entry. (`repos/effect/packages/effect/src/HashMap.ts:382-391`)
+- `HashMap.modify(map, key, f)` — update an existing value in place (functionally). (`repos/effect/packages/effect/src/HashMap.ts:362-370`)
+- `HashMap.modifyAt(map, key, f)` — takes `Option<V>` and returns `Option<V>`; covers insert-or-update atomically. (`repos/effect/packages/effect/src/HashMap.ts:330-343`)
+- `HashMap.union(a, b)` — merge two maps, with `b` winning on key conflicts. (`repos/effect/packages/effect/src/HashMap.ts:372-380`)
 
-**When to use `HashMap`:** Your keys are value objects — `Data.struct`, `Data.Class`, branded types, or any type implementing `Equal`. Use plain `Map<string, V>` or `Record<string, V>` for string-keyed maps; `HashMap` is not faster there.
-
-**Performance:** O(1) average for get/set/has/remove. The underlying implementation is a Hash-Array Mapped Trie (HAMT); structural sharing means most updates copy only O(log n) nodes.
+**When to use `HashMap`:** Your keys are value objects — `Data.struct`, `Data.Class`, or any type implementing `Equal`. Use `Map<string, V>` or `Record<string, V>` for string keys. All core operations are O(1) average; structural sharing means updates copy only O(log n) nodes.
 
 ### HashSet — structural-equality set
 
 **Source:** `repos/effect/packages/effect/src/HashSet.ts` — stable since 2.0.0.
 
-The module-level JSDoc (`repos/effect/packages/effect/src/HashSet.ts:1-100`) is particularly thorough — it documents performance, equality semantics, and operation complexity in a reference table.
+The module-level JSDoc (`repos/effect/packages/effect/src/HashSet.ts:1-100`) documents performance, equality semantics, and operation complexity in a reference table.
 
-**Core constructors** (`repos/effect/packages/effect/src/HashSet.ts:375-470`):
+**Core constructors** (`repos/effect/packages/effect/src/HashSet.ts:348-470`):
 
 ```ts
 import { HashSet } from "effect"
@@ -132,7 +128,7 @@ const s2 = HashSet.fromIterable([1, 2, 3, 1, 2]) // deduplicates: {1, 2, 3}
 - `HashSet.union(a, b)`, `HashSet.intersection(a, b)`, `HashSet.difference(a, b)` — set algebra, O(n).
 - `HashSet.map(set, f)`, `HashSet.filter(set, pred)`, `HashSet.reduce(set, z, f)` — standard functional collection operations.
 
-**Equality of elements:** `HashSet` uses `Equal.equals` from Effect's `Equal` module for deduplication. For primitive values this behaves like `===`. For objects you must implement `Equal` (or use `Data.struct` / `Data.Class`) — otherwise every distinct object reference is treated as a unique element, which silently defeats deduplication.
+**Equality of elements:** `HashSet` uses `Equal.equals` for deduplication. Primitives behave like `===`. For objects, use `Data.struct` / `Data.Class` (or implement `Equal`) — otherwise every distinct reference is treated as a unique element.
 
 ```ts
 import { Data, Equal, HashSet } from "effect"
@@ -163,8 +159,8 @@ const stack: List.List<number> = List.make(3, 2, 1) // [3, 2, 1]
 const pushed = List.cons(4, stack)                  // [4, 3, 2, 1] — O(1)
 
 // Head and tail — safe via Option
-const head: Option.Option<number> = List.head(pushed) // Option.some(4)
-const tail: List.List<number>     = List.tail(pushed) // [3, 2, 1]
+const head: Option.Option<number>           = List.head(pushed) // Option.some(4)
+const tail: Option.Option<List.List<number>> = List.tail(pushed) // Option.some([3, 2, 1])
 
 // Build from any iterable
 const fromArr = List.fromIterable([10, 20, 30])
@@ -175,21 +171,21 @@ const asArray = List.toArray(fromArr) // [10, 20, 30]
 
 **Constructors** (`repos/effect/packages/effect/src/List.ts:245-310`):
 
-- `List.nil()` / `List.empty()` — the empty list. (`repos/effect/packages/effect/src/List.ts:251`)
-- `List.cons(head, tail)` — prepend; O(1). (`repos/effect/packages/effect/src/List.ts:259`)
-- `List.of(value)` — singleton list. (`repos/effect/packages/effect/src/List.ts:277`)
-- `List.fromIterable(prefix)` — build from any iterable. (`repos/effect/packages/effect/src/List.ts:285-295`)
-- `List.make(...elements)` — vararg. (`repos/effect/packages/effect/src/List.ts:308-310`)
+- `List.nil()` / `List.empty()` — the empty list. (`repos/effect/packages/effect/src/List.ts:245-251`)
+- `List.cons(head, tail)` — prepend; O(1). (`repos/effect/packages/effect/src/List.ts:253-259`)
+- `List.of(value)` — singleton list. (`repos/effect/packages/effect/src/List.ts:271-277`)
+- `List.fromIterable(prefix)` — build from any iterable. (`repos/effect/packages/effect/src/List.ts:279-295`)
+- `List.make(...elements)` — vararg. (`repos/effect/packages/effect/src/List.ts:302-310`)
 
-**Structural sharing:** When you `cons` a new head onto an existing list, the new `Cons` node points at the old tail. No copying occurs. Two lists can share a suffix. This is the "persistent" property: old references remain valid and point to the original data.
+**Structural sharing:** `cons` creates a new `Cons` node that points at the old tail — no copying. Two lists can share a suffix; old references remain valid.
 
-**List vs Chunk vs Array:** Use `Array` for most application code (random access, JSON, interop). Use `Chunk` when working in stream pipelines (Chapter 16 — Stream uses `Chunk` as its element container). Use `List` specifically when you need O(1) prepend-heavy patterns: recursive algorithms, stack-like accumulation, or building a result by consing in reverse then reading from the front.
+**List vs Chunk vs Array:** Use `Array` for random access and JSON interop. Use `Chunk` in stream pipelines (Chapter 16). Use `List` for O(1) prepend-heavy patterns: recursive algorithms, stack-like accumulation, or building a result by consing in reverse.
 
 ### RedBlackTree — ordered range queries
 
 **Source:** `repos/effect/packages/effect/src/RedBlackTree.ts` — stable since 2.0.0.
 
-`RedBlackTree<K, V>` is a self-balancing binary search tree parameterised by an `Order<K>`. Insert, delete, and exact lookup are O(log n). Its most powerful feature is ordered range traversal: half-open and closed ranges of keys are available as lazy iterables with no up-front allocation.
+`RedBlackTree<K, V>` is a self-balancing BST parameterised by an `Order<K>`. Insert, delete, and lookup are O(log n). Its key feature is ordered range traversal: half-open and closed ranges of keys as lazy iterables with no up-front allocation.
 
 **Constructors** (`repos/effect/packages/effect/src/RedBlackTree.ts:62-91`):
 
@@ -223,7 +219,7 @@ To get a half-open range `[lo, hi)`, iterate `greaterThanEqual(tree, lo)` and `t
 
 - `RedBlackTree.findFirst(tree, key)` — `Option<V>` for the first value at `key`.
 - `RedBlackTree.findAll(tree, key)` — `Chunk<V>` for all values at `key` (the tree allows duplicate keys).
-- `RedBlackTree.has(tree, key)` — `boolean`. (`repos/effect/packages/effect/src/RedBlackTree.ts:225-228`)
+- `RedBlackTree.has(tree, key)` — `boolean`. (`repos/effect/packages/effect/src/RedBlackTree.ts:219-228`)
 
 **Relation to SortedMap/SortedSet:** `SortedMap` and `SortedSet` are ergonomic wrappers around `RedBlackTree` that hide the duplicate-key semantics and expose a map/set interface. If you need the full range API or duplicate keys, use `RedBlackTree` directly. If you only need an ordered map or set, see Chapter 42 — typeclass, which covers `SortedMap` (`repos/effect/packages/effect/src/SortedMap.ts:92-102`) and `SortedSet` (`repos/effect/packages/effect/src/SortedSet.ts:92-92`).
 
@@ -231,7 +227,7 @@ To get a half-open range `[lo, hi)`, iterate `greaterThanEqual(tree, lo)` and `t
 
 **Source:** `repos/effect/packages/effect/src/Trie.ts` — stable since 2.0.0.
 
-The module-level JSDoc (`repos/effect/packages/effect/src/Trie.ts:1-17`) summarises it well: a `Trie` works like a `HashMap` with the additional constraint that keys must be `string`. That constraint enables two things plain `HashMap` cannot offer: prefix lookups in O(prefix length + result count) instead of O(n), and a `longestPrefixOf` query that finds the longest stored key that is a prefix of a given input.
+A `Trie` is a `HashMap` restricted to `string` keys. That constraint enables two operations plain `HashMap` cannot: prefix lookups in O(prefix length + result count) and a `longestPrefixOf` query that returns the longest stored key which is a prefix of the input.
 
 ```ts
 import { Option, Trie } from "effect"
@@ -246,22 +242,22 @@ const routes = Trie.empty<string>().pipe(
 
 **Core API** (`repos/effect/packages/effect/src/Trie.ts:60-372`):
 
-- `Trie.empty<V>()` — empty trie. (`repos/effect/packages/effect/src/Trie.ts:60`)
-- `Trie.fromIterable(entries)` — build from `Iterable<readonly [string, V]>`. (`repos/effect/packages/effect/src/Trie.ts:81`)
-- `Trie.make(...entries)` — vararg. (`repos/effect/packages/effect/src/Trie.ts:100-102`)
-- `Trie.insert(trie, key, value)` — returns a new `Trie`; O(key length). (`repos/effect/packages/effect/src/Trie.ts:128-131`)
-- `Trie.keysWithPrefix(trie, prefix)` — lazy iterator of all keys sharing `prefix`. (`repos/effect/packages/effect/src/Trie.ts:254-257`)
-- `Trie.entriesWithPrefix(trie, prefix)` — lazy `[key, value]` pairs with `prefix`. (`repos/effect/packages/effect/src/Trie.ts:312-315`)
-- `Trie.longestPrefixOf(trie, key)` — returns `Option<[string, V]>` for the longest stored key that is a prefix of `key`. (`repos/effect/packages/effect/src/Trie.ts:369-372`)
+- `Trie.empty<V>()` — empty trie. (`repos/effect/packages/effect/src/Trie.ts:43-60`)
+- `Trie.fromIterable(entries)` — build from `Iterable<readonly [string, V]>`. (`repos/effect/packages/effect/src/Trie.ts:62-81`)
+- `Trie.make(...entries)` — vararg. (`repos/effect/packages/effect/src/Trie.ts:83-102`)
+- `Trie.insert(trie, key, value)` — returns a new `Trie`; O(key length). (`repos/effect/packages/effect/src/Trie.ts:104-131`)
+- `Trie.keysWithPrefix(trie, prefix)` — lazy iterator of all keys sharing `prefix`. (`repos/effect/packages/effect/src/Trie.ts:231-257`)
+- `Trie.entriesWithPrefix(trie, prefix)` — lazy `[key, value]` pairs with `prefix`. (`repos/effect/packages/effect/src/Trie.ts:289-315`)
+- `Trie.longestPrefixOf(trie, key)` — returns `Option<[string, V]>` for the longest stored key that is a prefix of `key`. (`repos/effect/packages/effect/src/Trie.ts:345-372`)
 
 Entries are always iterated in **alphabetical order**, regardless of insertion order — a natural property of the trie structure.
 
 ## A production example
 
-The following example models a request-log analysis component. It uses all five collection types together to demonstrate their complementary strengths.
+The following example models a request-log analysis component using all five collection types.
 
 ```ts
-import { Data, HashMap, HashSet, List, Order, RedBlackTree, Trie } from "effect"
+import { Data, HashMap, HashSet, List, Option, Order, RedBlackTree, Trie } from "effect"
 
 // --- Domain types ---
 
@@ -310,16 +306,14 @@ const emptyState: LogState = {
 function recordRequest(state: LogState, entry: RequestEntry): LogState {
   const ip = IpAddress(entry.ip)
 
-  // HashMap.modify — increment count atomically, defaulting to 0
+  // HashMap.modifyAt — increment count atomically, defaulting to 0
   const requestCounts = HashMap.modifyAt(state.requestCounts, ip, (opt) =>
-    opt._tag === "None"
-      ? { _tag: "Some", value: 1 }
-      : { _tag: "Some", value: opt.value + 1 }
+    Option.some(Option.getOrElse(opt, () => 0) + 1)
   )
 
   // HashSet.add — flag IP if it has accumulated >100 requests
   const count = HashMap.get(requestCounts, ip)
-  const suspiciousIps = count._tag === "Some" && count.value > 100
+  const suspiciousIps = Option.isSome(count) && count.value > 100
     ? HashSet.add(state.suspiciousIps, ip)
     : state.suspiciousIps
 
@@ -352,7 +346,7 @@ function resolveRoute(state: LogState, path: string): string {
   // Trie.longestPrefixOf — finds the best matching route prefix
   // e.g. "api/users/profile/avatar" matches "api/users/profile"
   const match = Trie.longestPrefixOf(state.routeTable, path)
-  return match._tag === "Some" ? match.value[1] : "not-found"
+  return Option.isSome(match) ? match.value[1] : "not-found"
 }
 
 // --- Usage ---
@@ -367,7 +361,7 @@ console.log(resolveRoute(state, "api/users/profile/avatar")) // "profile-handler
 console.log(HashSet.size(state.suspiciousIps))   // 0 (counts are low)
 ```
 
-Every `recordRequest` call returns a completely new `LogState` with none of the collections mutated. The previous state is still valid; you can snapshot it, compare it, or roll back to it without any extra work.
+Every `recordRequest` call returns a new `LogState` — no collection is mutated. The previous state remains valid for snapshots or rollback.
 
 ## Variations
 
