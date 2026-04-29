@@ -362,9 +362,9 @@ type ApiError = NetworkError | ParseError | RateLimitError | AuthError
 // --- Retry-strategy type ---
 
 type RetryStrategy =
-  | { readonly kind: "exponential"; readonly maxAttempts: number }
-  | { readonly kind: "fixed";       readonly intervalMs: number; readonly maxAttempts: number }
-  | { readonly kind: "none" }
+  | { readonly _tag: "exponential"; readonly maxAttempts: number }
+  | { readonly _tag: "fixed";       readonly intervalMs: number; readonly maxAttempts: number }
+  | { readonly _tag: "none" }
 
 // --- Match.tags dispatches the full union in one expression ---
 
@@ -374,15 +374,15 @@ const toRetryStrategy = Match.type<ApiError>().pipe(
     // Transient network failures: exponential back-off, up to 5 attempts
     NetworkError: (e) =>
       e.status >= 500
-        ? ({ kind: "exponential", maxAttempts: 5 } as RetryStrategy)
-        : ({ kind: "none" } as RetryStrategy),
+        ? ({ _tag: "exponential", maxAttempts: 5 } as RetryStrategy)
+        : ({ _tag: "none" } as RetryStrategy),
 
     // Parse errors are deterministic — retrying won't help
-    ParseError: () => ({ kind: "none" } as RetryStrategy),
+    ParseError: () => ({ _tag: "none" } as RetryStrategy),
 
     // Rate-limit: fixed interval dictated by the server header
     RateLimitError: (e) => ({
-      kind: "fixed",
+      _tag: "fixed",
       intervalMs: e.retryAfter * 1000,
       maxAttempts: 3
     } as RetryStrategy),
@@ -390,8 +390,8 @@ const toRetryStrategy = Match.type<ApiError>().pipe(
     // Expired token can be recovered by a refresh, invalid cannot
     AuthError: (e) =>
       e.reason === "expired"
-        ? ({ kind: "fixed", intervalMs: 200, maxAttempts: 1 } as RetryStrategy)
-        : ({ kind: "none" } as RetryStrategy)
+        ? ({ _tag: "fixed", intervalMs: 200, maxAttempts: 1 } as RetryStrategy)
+        : ({ _tag: "none" } as RetryStrategy)
   }),
   Match.exhaustive
 )
@@ -435,7 +435,7 @@ const fetchWithRetry = (url: string): Effect.Effect<string, ApiError> =>
 Key observations:
 
 - `toRetryStrategy` is built once with `Match.type<ApiError>()` and stored as a plain function `(e: ApiError) => RetryStrategy`. It is used directly in `scheduleFromStrategy`'s caller without wrapping in an Effect.
-- `scheduleFromStrategy` uses `Match.value(s)` because it already holds the strategy. It uses `Match.tag` with the `kind` discriminant via the `RetryStrategy` union shape.
+- `scheduleFromStrategy` uses `Match.value(s)` because it already holds the strategy. It uses `Match.tag` on `RetryStrategy`, which now uses the Effect-conventional `_tag` discriminant so `Match.tag` matches correctly at runtime.
 - Both match expressions end with `Match.exhaustive`, so adding a fifth error type to `ApiError` or a fourth `kind` to `RetryStrategy` immediately causes a compile error at the `Match.exhaustive` call.
 
 ---
@@ -617,36 +617,14 @@ const toLabel = Match.type<OrderStatus>().pipe(
 )
 ```
 
-**Building the matcher inside a hot loop — use `Match.type` to hoist it:**
-
-```ts
-// WRONG — rebuilds the matcher object on every call
-function processEvent(e: Event): string {
-  return Match.value(e).pipe(  // new Matcher allocated every call
-    Match.tag("Click",    () => "click"),
-    Match.tag("KeyPress", () => "key"),
-    Match.exhaustive
-  )
-}
-
-// CORRECT — build once with Match.type, reuse as a function
-import { Match } from "effect"
-
-const processEvent = Match.type<Event>().pipe(
-  Match.tag("Click",    () => "click"),
-  Match.tag("KeyPress", () => "key"),
-  Match.exhaustive
-)
-```
-
 ---
 
 ## See also
 
-- [Chapter 06 — Typed errors: `Data.TaggedError` and the error channel](../part-1-foundations/06-typed-errors.md) — `Data.TaggedError` creates the `_tag`-discriminated unions that `Match.tag` is optimised for; exhaustive matching of error unions is the primary use case shown in this chapter.
-- [Chapter 18 — Data, Equal, Hash: structural equality, case classes, and collections](../part-1-foundations/18-data-equal-hash.md) — `Data.TaggedEnum` produces discriminated union types and constructors; combine with `Match.type<TaggedEnum>()` and `Match.tag` for exhaustive dispatch over every variant.
-- [Chapter 12 — Option and Either: null-safety and result types without exceptions](../part-1-foundations/12-option-and-either.md) — `Match.option` and `Match.either` return `Option<A>` and `Either<A, R>` respectively; familiarity with those types (introduced in Chapter 12) is assumed when choosing the right finalizer.
-- Chapter 44 — Experimental patterns — Machine, PersistedCache, EventLog: `@effect/experimental`'s `Machine` type uses `Match.type` internally to dispatch incoming messages onto state-specific handlers; the match-based state machine pattern is a natural extension of what this chapter introduces.
-- [Patterns catalog — `Match.value` / `Match.type` — starting a match](../../research/02-patterns-catalog.md#matchvalue--matchtype--starting-a-match) — the full pattern entry with signature, where-it-appears citations, and the anti-pattern it replaces.
-- [Patterns catalog — `Match.when` / `not` / `exhaustive` — clauses and finalizers](../../research/02-patterns-catalog.md#matchwhen--not--exhaustive--clauses-and-finalizers) — the companion entry covering the clause combinators and finalizers in depth.
-- [Per-package note: `research/packages/effect.md`](../../research/packages/effect.md) — the `Match` module is listed under "Other utilities" in the `effect` package overview; the source file is `repos/effect/packages/effect/src/Match.ts`.
+- [Chapter 06 — Typed errors](../part-1-foundations/06-typed-errors.md) — `Data.TaggedError` creates the `_tag`-discriminated unions that `Match.tag` is optimised for.
+- [Chapter 18 — Data, Equal, Hash](../part-1-foundations/18-data-equal-hash.md) — `Data.TaggedEnum` produces discriminated union types; combine with `Match.type` and `Match.tag` for exhaustive dispatch.
+- [Chapter 12 — Option and Either](../part-1-foundations/12-option-and-either.md) — background for the `Match.option` and `Match.either` finalizers.
+- Chapter 44 — Experimental patterns — `@effect/experimental`'s `Machine` uses `Match.type` internally for state-transition dispatch.
+- [Patterns catalog — `Match.value` / `Match.type`](../../research/02-patterns-catalog.md#matchvalue--matchtype--starting-a-match) — full pattern entry with signature and where-it-appears citations.
+- [Patterns catalog — `Match.when` / `not` / `exhaustive`](../../research/02-patterns-catalog.md#matchwhen--not--exhaustive--clauses-and-finalizers) — clause combinators and finalizers in depth.
+- [Per-package note: `research/packages/effect.md`](../../research/packages/effect.md) — `Match` module overview; source at `repos/effect/packages/effect/src/Match.ts`.
