@@ -209,7 +209,7 @@ The PubSub is created once in the layer body and handed to both `runEviction` an
 
 `PubSub.unbounded` is the right variant here. A bounded PubSub would block publishers when any subscriber's buffer is full; the cache's `get` and `set` operations must not stall because a slow telemetry consumer is not keeping up. Sliding and dropping variants discard messages — losing a Hit or Evict event silently would undermine the correctness of test assertions in Chapter 56. Unbounded allows each subscriber's buffer to grow without limit, which is acceptable when subscribers promptly drain their streams (as a test fiber does).
 
-See: `repos/effect/packages/effect/src/PubSub.ts:79-86` (`unbounded`), `repos/effect/packages/effect/src/PubSub.ts:49-73` (bounded/sliding/dropping for comparison).
+See: `repos/effect/packages/effect/src/PubSub.ts:79-86` (`unbounded`), `repos/effect/packages/effect/src/PubSub.ts:39-77` (bounded/sliding/dropping for comparison).
 
 ### Data.taggedEnum over a plain union
 
