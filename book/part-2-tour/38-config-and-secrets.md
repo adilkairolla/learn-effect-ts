@@ -246,14 +246,7 @@ const appLayer = Layer.effectDiscard(
 
 // ── 4. Wire it all together ──────────────────────────────────────────────────
 
-const program = Effect.gen(function* () {
-  yield* appLayer.build
-}).pipe(
-  Effect.scoped,
-  Effect.provide(appLayer)
-)
-
-// Reads from process.env by default
+// Reads from process.env by default; Layer.launch keeps the layer alive until completion
 Effect.runPromise(Effect.scoped(Layer.launch(appLayer)))
 ```
 
