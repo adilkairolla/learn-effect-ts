@@ -59,7 +59,7 @@ import { Layer } from "effect"
 import { createServer } from "node:http"
 
 // Concrete server layer — wraps Node's createServer inside a Layer.scoped
-// repos/effect/packages/platform-node/src/NodeHttpServer.ts:71-75
+// repos/effect/packages/platform-node/src/NodeHttpServer.ts:67-75
 const ServerLive = NodeHttpServer.layer(() => createServer(), { port: 3000 })
 
 // HttpServer.serve wires the app into the HttpServer tag; ServerLive provides it
@@ -100,21 +100,21 @@ All five of the OS-level services plus `WorkerManager` are bundled together in `
 
 `NodeHttpServer` (`repos/effect/packages/platform-node/src/NodeHttpServer.ts:1-134`) provides four layer factories:
 
-- **`layer(evaluate, options)`** — the batteries-included factory. Takes a lazy `() => Http.Server` factory and `Net.ListenOptions`. Produces `Layer<HttpPlatform | Etag.Generator | NodeContext | HttpServer, ServeError>`. All four provided tags are necessary to run an HTTP application. `repos/effect/packages/platform-node/src/NodeHttpServer.ts:71-75`
+- **`layer(evaluate, options)`** — the batteries-included factory. Takes a lazy `() => Http.Server` factory and `Net.ListenOptions`. Produces `Layer<HttpPlatform | Etag.Generator | NodeContext | HttpServer, ServeError>`. All four provided tags are necessary to run an HTTP application. `repos/effect/packages/platform-node/src/NodeHttpServer.ts:67-75`
 
 - **`layerServer(evaluate, options)`** — provides only `HttpServer`. Use this when you want to supply `HttpPlatform` and `NodeContext` yourself. `repos/effect/packages/platform-node/src/NodeHttpServer.ts:62-65`
 
 - **`layerConfig(evaluate, options)`** — same as `layer` but reads listen options from `Config` values, enabling port and hostname to come from environment variables. `repos/effect/packages/platform-node/src/NodeHttpServer.ts:81-87`
 
-- **`layerTest`** — starts a port-0 server and pre-configures an `HttpClient` with the server's base URL. The returned layer includes both `HttpServer` and `HttpClient` so in-process integration tests can make real requests without knowing the port. `repos/effect/packages/platform-node/src/NodeHttpServer.ts:111-118`
+- **`layerTest`** — starts a port-0 server and pre-configures an `HttpClient` with the server's base URL. The returned layer includes both `HttpServer` and `HttpClient` so in-process integration tests can make real requests without knowing the port. `repos/effect/packages/platform-node/src/NodeHttpServer.ts:89-118`
 
 Every one of these factories delegates to `Layer.scoped`, which means the server socket is acquired and released inside an Effect `Scope` (Chapter 10). The acquisition calls `server.listen`; the release calls `server.close` (and `wss.close` if WebSocket upgrades were configured). No manual `process.on("SIGTERM")` listener is needed.
 
 ### HTTP client
 
-`NodeHttpClient` (`repos/effect/packages/platform-node/src/NodeHttpClient.ts:1-139`) exposes two client backends:
+`NodeHttpClient` (`repos/effect/packages/platform-node/src/NodeHttpClient.ts:1-138`) exposes two client backends:
 
-- **`layer`** — the default backend. It manages `Http.Agent` and `Https.Agent` via `Effect.acquireRelease`, creating them on layer-up and destroying them on layer-down. `repos/effect/packages/platform-node/src/NodeHttpClient.ts:72`
+- **`layer`** — the default backend. It manages `Http.Agent` and `Https.Agent` via `Effect.acquireRelease`, creating them on layer-up and destroying them on layer-down. `repos/effect/packages/platform-node/src/NodeHttpClient.ts:68-72`
 
 - **`layerUndici`** — routes all requests through an Undici `Dispatcher`. Undici is Node.js's modern HTTP/1.1 and HTTP/2 client with connection pooling built in. The `Dispatcher` tag is exposed in context so callers can inject a custom pool, a mock, or a proxy. `repos/effect/packages/platform-node/src/NodeHttpClient.ts:131`
 
@@ -126,7 +126,7 @@ Every one of these factories delegates to `Layer.scoped`, which means the server
 
 `NodePath.layer`, `NodePath.layerPosix`, and `NodePath.layerWin32` provide `Path.Path`. The POSIX and Win32 variants force the `path` implementation regardless of the current OS — useful for cross-platform path normalisation in tests.
 
-`NodeKeyValueStore.layerFileSystem(directory)` provides `KeyValueStore.KeyValueStore` backed by the filesystem. Each key becomes a file in the given directory. `repos/effect/packages/platform-node/src/NodeKeyValueStore.ts:13-15`
+`NodeKeyValueStore.layerFileSystem(directory)` provides `KeyValueStore.KeyValueStore` backed by the filesystem. Each key becomes a file in the given directory. `repos/effect/packages/platform-node/src/NodeKeyValueStore.ts:9-15`
 
 ### Subprocess
 
@@ -136,20 +136,21 @@ Every one of these factories delegates to `Layer.scoped`, which means the server
 
 ### Worker threads
 
-`NodeWorker` (`repos/effect/packages/platform-node/src/NodeWorker.ts:1-37`) provides three layer variants:
+`NodeWorker` (`repos/effect/packages/platform-node/src/NodeWorker.ts:1-36`) provides four layer variants:
 
 - **`layerManager`** — provides `Worker.WorkerManager` only, without a spawner. Used when you provide the spawner separately.
 - **`layerWorker`** — provides `Worker.PlatformWorker`, the low-level platform hook.
 - **`layer(spawn)`** — the batteries-included variant. Pass a `(id: number) => WorkerThreads.Worker | ChildProcess.ChildProcess` factory and get both `WorkerManager` and `Worker.Spawner`. `repos/effect/packages/platform-node/src/NodeWorker.ts:26-29`
+- **`layerPlatform(spawn)`** — low-level escape hatch that provides `PlatformWorker` and `Spawner` without `WorkerManager`; for advanced custom scheduling.
 
 Worker shutdown is graceful: send a terminate signal, await `exit` via `Deferred`, apply a 5-second timeout, then `SIGKILL`.
 
 ### NodeContext.layer — the bundle
 
-`NodeContext.layer` (`repos/effect/packages/platform-node/src/NodeContext.ts:32-39`) composes five independent service layers into one named layer with `Layer.mergeAll` and `Layer.provideMerge`:
+`NodeContext.layer` (`repos/effect/packages/platform-node/src/NodeContext.ts:28-40`) composes five independent service layers into one named layer with `Layer.mergeAll` and `Layer.provideMerge`:
 
 ```ts
-// repos/effect/packages/platform-node/src/NodeContext.ts:32-39
+// repos/effect/packages/platform-node/src/NodeContext.ts:28-40
 export const layer: Layer.Layer<NodeContext> = pipe(
   Layer.mergeAll(
     NodePath.layer,
@@ -167,7 +168,7 @@ The type alias `NodeContext` at line 21 is `CommandExecutor | FileSystem | Path 
 
 `NodeRuntime.runMain` (`repos/effect/packages/platform-node/src/NodeRuntime.ts:1-11`) is the program entry point for every Node.js Effect application. Internally it calls `makeRunMain` from `@effect/platform/Runtime`, which:
 
-1. Forks the main fiber via `Runtime.runFork`.
+1. Forks the main fiber via `Effect.runFork`.
 2. Installs `SIGINT` and `SIGTERM` listeners that call `fiber.unsafeInterruptAsFork`.
 3. Sets `setInterval(constVoid, 2**31 - 1)` to keep the event loop alive until the fiber completes (`repos/effect/packages/platform-node-shared/src/internal/runtime.ts:9`).
 4. Clears the interval and removes signal listeners in the fiber observer.
@@ -179,11 +180,10 @@ The result: interruption propagates down the fiber tree, every `Layer.scoped` fi
 
 `Pool` and `KeyedPool` live in the core `effect` package, not in `@effect/platform-node`. They are introduced here because platform-node services make the use case concrete: HTTP keep-alive connections, database connections, and worker threads are all pooled resources — expensive to create, safe to reuse, and needed concurrently.
 
-**`Pool.make`** (`repos/effect/packages/effect/src/Pool.ts:115-122`) creates a fixed-size pool:
+**`Pool.make`** (`repos/effect/packages/effect/src/Pool.ts:96-122`) creates a fixed-size pool:
 
 ```ts
-import { Pool } from "effect"
-import { Duration, Effect, Layer } from "effect"
+import { Effect, Pool } from "effect"
 
 // A pool of 10 items, each acquired with the given effect
 const pool = Pool.make({
@@ -195,7 +195,7 @@ const pool = Pool.make({
 
 `Pool.get` returns a scoped `Effect<A, E, Scope>`. The resource is returned to the pool when the scope closes — no manual `.release()` call. If acquisition fails, the pool retries on the next `get`. `Pool.invalidate(item)` marks an item as bad, causing the pool to re-acquire lazily.
 
-**`Pool.makeWithTTL`** (`repos/effect/packages/effect/src/Pool.ts:171-181`) creates a pool that scales between `min` and `max` items and evicts idle items after a `timeToLive` duration:
+**`Pool.makeWithTTL`** (`repos/effect/packages/effect/src/Pool.ts:124-181`) creates a pool that scales between `min` and `max` items and evicts idle items after a `timeToLive` duration:
 
 ```ts
 import { Duration, Effect, Pool } from "effect"
@@ -206,12 +206,12 @@ const connectionPool = Pool.makeWithTTL({
   max: 20,
   timeToLive: Duration.seconds(30)
 })
-// repos/effect/packages/effect/src/Pool.ts:171-181
+// repos/effect/packages/effect/src/Pool.ts:124-181
 ```
 
 The default `timeToLiveStrategy` is `"usage"` — idle items are evicted after `timeToLive` since last use. Set `timeToLiveStrategy: "creation"` to evict based on creation time instead.
 
-**`KeyedPool.make`** (`repos/effect/packages/effect/src/KeyedPool.ts:73-78`) creates a map of pools keyed by an arbitrary `K`. Each key gets its own independent sub-pool:
+**`KeyedPool.make`** (`repos/effect/packages/effect/src/KeyedPool.ts:64-78`) creates a map of pools keyed by an arbitrary `K`. Each key gets its own independent sub-pool:
 
 ```ts
 import { Duration, Effect, KeyedPool } from "effect"
@@ -221,14 +221,11 @@ const perHostPool = KeyedPool.make({
   acquire: (host: string) => acquireConnectionTo(host),
   size: 5
 })
-// repos/effect/packages/effect/src/KeyedPool.ts:73-78
+// repos/effect/packages/effect/src/KeyedPool.ts:64-78
 ```
 
 `KeyedPool.makeWithTTL` adds min/max sizing and TTL eviction per key; the `min`, `max`, and `timeToLive` options can all be functions of `K`, so different keys can have different pool sizes.
 
-**When to use Pool vs other primitives:** Use `Pool.make` when resources are expensive to create, safe to reuse, and needed concurrently. Use `Semaphore` (Chapter 37) when you just want to limit concurrency without managing resource lifecycle. Use `RcRef` / `RcMap` (Chapter 24) when you want reference-counted sharing rather than size-limited pooling.
-
-**How platform-node uses Pool:** The Undici dispatcher in `NodeHttpClient.layerUndici` maintains a pool of HTTP/2 connections internally. The worker pool in `NodeWorker.layer` uses `Worker.makePoolLayer`, which wraps a `Pool.Pool<Worker, WorkerError>` around the `WorkerManager` service. The pattern introduced here — acquire an expensive resource once, loan it out through `Pool.get`, return it on scope close — is the same pattern used everywhere resources are pooled.
 
 ---
 
@@ -280,7 +277,7 @@ const wsHandler = Stream.fromSchedule(Schedule.spaced(1000)).pipe(
 // ---- Router — Layer.scoped composition from Chapter 09 / Chapter 10 ----
 
 // NodeHttpServer.layer is a Layer.scoped; server.close() runs on scope teardown
-// repos/effect/packages/platform-node/src/NodeHttpServer.ts:71-75
+// repos/effect/packages/platform-node/src/NodeHttpServer.ts:67-75
 const ServerLive = NodeHttpServer.layer(() => createServer(), { port: 3000 })
 
 const HttpLive = HttpRouter.empty.pipe(
@@ -304,7 +301,7 @@ NodeRuntime.runMain(Layer.launch(HttpLive))
 
 This program composes cleanly with Part I patterns. `HttpLive` is a `Layer` (Chapter 09) assembled by merging router, middleware, and server concerns. `NodeHttpServer.layer` is a `Layer.scoped` (Chapter 10) — the `createServer()` factory is called inside `Effect.acquireRelease`; the `release` half calls `server.close()`. `NodeRuntime.runMain` drives the whole graph and ensures clean shutdown on OS signals.
 
-The handlers themselves (`healthzHandler`, `uploadHandler`, `wsHandler`) import nothing from `@effect/platform-node`. They depend only on abstract tags from `@effect/platform`. Swapping `NodeHttpServer.layer` for `BunHttpServer.layer` (Chapter 24) requires changing one line and leaves all handlers unchanged.
+The handlers themselves (`healthzHandler`, `uploadHandler`, `wsHandler`) import nothing from `@effect/platform-node`. They depend only on abstract tags from `@effect/platform`. Swapping to `BunHttpServer.layer` (Chapter 24) leaves all handlers unchanged — the handlers are fully portable. The layer call site does need adjustment because `BunHttpServer.layer` takes a `ServeOptions` object rather than the `(factory, listenOpts)` pair that `NodeHttpServer.layer` accepts.
 
 ---
 
