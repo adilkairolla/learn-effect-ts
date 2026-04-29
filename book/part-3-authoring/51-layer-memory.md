@@ -162,7 +162,7 @@ export const get: <A>(self: Ref<A>) => Effect.Effect<A> = internal.get
 
 Returns an `Effect` that reads the current value atomically. The `Ref.get(ref).pipe(Effect.map(...))` chain in `get` reads the map, then transforms the result without any further effects.
 
-**`Ref.update`** — `repos/effect/packages/effect/src/Ref.ts:141-147`
+**`Ref.update`** — `repos/effect/packages/effect/src/Ref.ts:140-147`
 
 ```ts
 /**
