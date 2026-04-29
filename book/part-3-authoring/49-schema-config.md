@@ -22,16 +22,7 @@ The design also demonstrates `Schema.Class` over `Schema.Struct`. Both can valid
 
 ## What we already have
 
-After Chapter 48, `worked-example/` contains three committed files across five commits:
-
-```bash
-$ git -C worked-example log --oneline
-209bb04 feat: define CacheError variants with Data.TaggedError
-770a49e feat: define Cache tag and CacheService interface
-79d5da5 fix: typecheck script uses -p not -b for --noEmit
-8b59b08 chore: initial package.json, tsconfig, vitest.config, gitignore
-10c9764 chore: initial README and design notes
-```
+After Chapter 48, `worked-example/` has 6 commits (most recent: `209bb04 feat: define CacheError variants with Data.TaggedError`) — see `git log --oneline` for the full list.
 
 `src/Cache.ts` defines the `Cache` tag and `CacheService` interface. Three placeholder types remain in that file:
 
@@ -130,7 +121,7 @@ The double-application pattern — `Schema.Class<Self>(identifier)(fields)` — 
 
 #### `Schema.Number`, `Schema.int()`, `Schema.positive()` — field constraints
 
-`Schema.Number` is the primitive number schema, exported at `repos/effect/packages/effect/src/Schema.ts:1231-1240` (as `Number$ as Number` in the export block).
+`Schema.Number` is the primitive number schema, exported at `repos/effect/packages/effect/src/Schema.ts:1236-1240` (as `Number$ as Number` in the export block).
 
 `Schema.int()` is a filter that rejects non-integer numbers (NaN, Infinity, and fractional values), defined at `repos/effect/packages/effect/src/Schema.ts:5099-5116`. It calls the lower-level `filter` combinator with `Number.isSafeInteger`.
 
@@ -155,7 +146,7 @@ export const decode: <A, I, R>(
 ) => (i: I, overrideOptions?: ParseOptions) => Effect.Effect<A, ParseResult.ParseError, R>
 ```
 
-Note the error type: `ParseResult.ParseError`, not `ParseResult.ParseIssue`. `ParseError` is a `TaggedError` wrapping a `ParseIssue` tree (defined at `repos/effect/packages/effect/src/ParseResult.ts:214-266`). The `ParseIssue` is the internal recursive structure that represents exactly what went wrong in the decode tree; `ParseError` is the typed `Effect` error that wraps it for the error channel.
+Note the error type: `ParseResult.ParseError`, not `ParseResult.ParseIssue`. `ParseError` is a `TaggedError` wrapping a `ParseIssue` tree (defined at `repos/effect/packages/effect/src/ParseResult.ts:227-260`). The `ParseIssue` is the internal recursive structure that represents exactly what went wrong in the decode tree; `ParseError` is the typed `Effect` error that wraps it for the error channel.
 
 `ParseResult` is a separate module, importable as `import * as ParseResult from "effect/ParseResult"`. The `Schema` module uses `ParseResult` internally but does not re-export it as a namespace — `Schema.ParseResult` does not exist.
 
