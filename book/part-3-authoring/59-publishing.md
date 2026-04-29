@@ -88,7 +88,7 @@ This is the default configuration for a single-package public library. Each fiel
 
 - `"changelog"` — which changelog generator to use. `"@changesets/cli/changelog"` is the built-in formatter that writes plain markdown. Effect uses `["@changesets/changelog-github", { "repo": "Effect-TS/effect" }]` (see `repos/effect/.changeset/config.json`) to generate GitHub PR links in its changelog entries. For a worked example without a real GitHub remote, the built-in formatter is the right choice.
 - `"commit": false` — do not auto-commit after `pnpm changeset version`. We prefer explicit commits so that the version bump appears in the git log with a clear message.
-- `"access": "public"` — needed for scoped packages (`@example/effect-cache`). npm treats scoped packages as `restricted` by default; this override is what makes `pnpm publish` work without passing `--access public` on the command line every time. Effect sets `"access": "restricted"` because it publishes to a private registry for some packages; we set `"public"` because our package is open source.
+- `"access": "public"` — needed for scoped packages (`@example/effect-cache`). This `access` field is consumed by `pnpm changeset publish` — the changesets-bundled publish command — not by bare `pnpm publish`. If you run `pnpm publish` directly, you still need to pass `--access public` on the command line for scoped packages. Effect uses `'access': 'restricted'` as the safer default for a monorepo — it forces every package to opt-in to public publication explicitly. We use `'access': 'public'` because `@example/effect-cache` is a single public package.
 - `"baseBranch": "main"` — the branch that changesets diffs against to decide which changes are new. This affects `pnpm changeset status` and the automated release PR workflow.
 - `"updateInternalDependencies": "patch"` — relevant in a monorepo: if package A depends on package B and B gets a patch bump, A's dependency on B is also bumped as a patch. For a single-package repo this field is inert but harmless.
 - `"fixed"` and `"linked"` — grouping and linking mechanisms for monorepos. Both empty here.
@@ -223,7 +223,7 @@ We deliberately omit `prepublishOnly` from the worked example to keep the build 
 ## Commit
 
 ```bash
-cd /Users/nosferatu/Projects/personal/effect-help/worked-example
+cd worked-example
 git add .changeset/config.json .changeset/initial.md package.json CHANGELOG.md
 git commit -m "chore: changesets config, peer deps, initial CHANGELOG"
 ```
