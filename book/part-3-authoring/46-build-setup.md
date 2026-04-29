@@ -1,7 +1,7 @@
 # Chapter 46 — Project layout and build setup — matching Effect monorepo conventions
 
 > **Worked-example commit:** `worked-example/` chapter 46 — `chore: initial package.json, tsconfig, vitest.config, gitignore`
-> **Patterns demonstrated:** [Dual ESM/CJS export pattern](../../research/02-patterns-catalog.md#dual-esmcjs-export-pattern) (build setup foreshadows this; the exports map is finalized in Ch 58), [The `internal/` folder and `index.ts` re-export shape](../../research/02-patterns-catalog.md#the-internalfolder-and-indexts-re-export-shape) (foreshadowed in tsconfig `rootDir`)
+> **Patterns demonstrated:** [Dual ESM/CJS export pattern](../../research/02-patterns-catalog.md#dual-esmcjs-export-pattern) (build setup foreshadows this; the exports map is finalized in Ch 58), [The `internal/` folder and `index.ts` re-export shape](../../research/02-patterns-catalog.md#the-internal-folder-and-indexts-re-export-shape) (foreshadowed in tsconfig `rootDir`)
 > **Reads from:** [Part II Chapter 21 (printer-ansi — first encounter with dual ESM/CJS)](../part-2-tour/21-printer-ansi.md), [Part II Chapter 22 (platform — `internal/` shape)](../part-2-tour/22-platform.md)
 > **Reads into:** Chapter 47 (first source file lands), Chapter 56 (vitest config used), Chapter 58 (final exports map)
 > **Source pinned at:** `effect@3.21.2` (SHA `39c934c1476be389f7469433910fdf30fc4dad82`)
@@ -100,7 +100,7 @@ file. The directory materialises in Chapter 47.
   "types": "./dist/dts/index.d.ts",
   "scripts": {
     "build": "tsc -b tsconfig.build.json",
-    "typecheck": "tsc -b tsconfig.src.json --noEmit",
+    "typecheck": "tsc -p tsconfig.src.json --noEmit",
     "test": "vitest run"
   },
   "peerDependencies": {
@@ -151,10 +151,12 @@ This is the workspace root tsconfig. It holds no `compilerOptions` and includes 
 own. Its sole job is to act as the entry point for `tsc -b` (project references build mode). When
 you run `tsc -b tsconfig.json`, TypeScript builds all referenced projects in dependency order.
 
-This mirrors the structure in `repos/effect/packages/effect/tsconfig.json` exactly — the
-`"include": []` is not an accident. A root tsconfig that accidentally includes source files would
-cause them to be compiled twice (once by the root, once by the referenced project), leading to
-duplicate declaration errors.
+This mirrors the structure in `repos/effect/packages/effect/tsconfig.json`, with one omission: the
+real Effect package also references `tsconfig.test.json` for a dedicated test project. We add tests
+in Chapter 56, where we'll revisit whether to follow the same split or keep the simpler
+single-tsconfig setup. The `"include": []` is not an accident: a root tsconfig that accidentally
+includes source files would cause them to be compiled twice (once by the root, once by the
+referenced project), leading to duplicate declaration errors.
 
 ### `tsconfig.src.json` (new)
 
@@ -285,8 +287,9 @@ final `outDir` and `declarationDir`.
 This separation gives you three distinct operations:
 
 1. **`tsc -b tsconfig.json`** — rebuilds everything in reference order. Used in CI.
-2. **`tsc -b tsconfig.src.json --noEmit`** (aliased as `npm run typecheck`) — typechecks the
+2. **`tsc -p tsconfig.src.json --noEmit`** (aliased as `npm run typecheck`) — typechecks the
    source without emitting any files. Fast for local development because it does not write to disk.
+   (Note: `tsc -b` build mode ignores `--noEmit`; this step uses project mode `-p` instead.)
 3. **`tsc -b tsconfig.build.json`** (aliased as `npm run build`) — emits the distributable output.
    Run before publishing.
 
@@ -298,6 +301,18 @@ The three-tsconfig pattern resolves this tension. The IDE uses `tsconfig.src.jso
 incremental cache, no disk writes). The build uses `tsconfig.build.json` (separate cache, writes
 to `dist/`). The root `tsconfig.json` is only there to let `tsc -b` walk the whole project.
 
+### `tsconfig.src.json` — inlined options versus monorepo base extension
+
+The real `repos/effect/packages/effect/tsconfig.src.json` is much shorter than ours — it extends
+`../../tsconfig.base.json` and adds only project-specific overrides. The worked example doesn't
+have a monorepo-level `tsconfig.base.json` to extend, so it inlines all compiler options directly.
+Two details are worth calling out: we use `"lib": ["ES2022"]` with no DOM types (this is a
+server-side library; DOM globals like `fetch` or `window` should not be in scope), and we omit
+the `@effect/language-service` plugin (an Effect-specific TypeScript plugin that improves
+diagnostics for Effect code — for example, catching common `pipe` argument mismatches). Adding the
+plugin is a future improvement worth noting; it requires `typescript-language-server` integration
+and is not necessary to get a correct build.
+
 ### `"type": "module"` and ESM-first
 
 `"type": "module"` in `package.json` means all `.js` files in the package are treated as ESM by
@@ -306,9 +321,17 @@ sets `"type": "module"`. Combined with `"moduleResolution": "NodeNext"` in TypeS
 explicit `.js` extensions on relative imports, which is required for correct ESM interop.
 
 The consequence is that `dist/cjs/` cannot be produced by `tsc` alone — you need a CommonJS
-transform step (Babel or esbuild) applied to the ESM output. That is exactly what the Effect
-monorepo does (`"build-cjs": "babel build/esm ... --out-dir build/cjs"`). For our worked example,
-the CJS step is deferred to Chapter 58, but the architecture is correct from the start.
+transform step (Babel or esbuild) applied to the ESM output. The real Effect monorepo runs a Babel
+pass over `build/esm` to emit a CommonJS variant at `build/cjs`. The worked example skips this
+step in Chapter 46; Chapter 58 introduces the full ESM/CJS dual output story.
+
+A related divergence: the real Effect monorepo separates `build/` (intermediate `tsc` output plus
+the Babel CJS pass) from `dist/` (the final published artifact assembled by a pack step — see
+`repos/effect/packages/effect/package.json` for the `build-cjs` Babel script). The worked example
+collapses this into a single `dist/` because we don't have a separate Babel CJS step yet. Using
+`dist/esm` and `dist/dts` directly is a valid simplification for a single-package project without
+a monorepo build orchestrator. Chapter 58 revisits this when we introduce the full `exports` map
+and dual-output publishing.
 
 ---
 
@@ -357,6 +380,7 @@ After this commit, `git log --oneline` shows:
 ## See also
 
 - [Chapter 47 — Designing the public API — the `.make` constructor and the service `Tag`](../part-3-authoring/47-public-api.md) — first source file; `tsconfig.src.json`'s `rootDir: "src"` becomes real
+- [Chapter 43 — Testing Effect programs with @effect/vitest](../part-2-tour/43-vitest.md) — the package whose helpers (`it.effect`, `it.scoped`) we'll wire into our vitest config in Chapter 56
 - [Chapter 56 — Testing with @effect/vitest — `it.effect`, `it.scoped`, and layer management](../part-3-authoring/56-testing.md) — the `vitest.config.ts` committed here is used without modification
 - [Chapter 57 — Documenting with JSDoc — `@since`, `@category`, `@example` tags](../part-3-authoring/57-jsdoc.md) — `docgen.json` and annotation tooling added alongside the existing build config
 - [Chapter 58 — Versioning, exports map, and dual ESM/CJS](../part-3-authoring/58-versioning-and-exports.md) — the `package.json` skeleton committed here receives its full `"exports"` map
@@ -365,4 +389,4 @@ After this commit, `git log --oneline` shows:
 - [Part II Chapter 21 — ANSI colors and terminal rendering with @effect/printer-ansi](../part-2-tour/21-printer-ansi.md) — first encounter with the dual ESM/CJS export pattern in a published Effect package
 - [Part II Chapter 22 — Platform services — the abstract runtime layer](../part-2-tour/22-platform.md) — `internal/` folder convention first observed; `tsconfig.src.json`'s `rootDir` foreshadows the same shape
 - [Patterns catalog — Dual ESM/CJS export pattern](../../research/02-patterns-catalog.md#dual-esmcjs-export-pattern)
-- [Patterns catalog — The `internal/` folder and `index.ts` re-export shape](../../research/02-patterns-catalog.md#the-internalfolder-and-indexts-re-export-shape)
+- [Patterns catalog — The `internal/` folder and `index.ts` re-export shape](../../research/02-patterns-catalog.md#the-internal-folder-and-indexts-re-export-shape)
