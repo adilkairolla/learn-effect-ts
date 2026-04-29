@@ -39,13 +39,13 @@ Four problems compound as your codebase grows.
 
 **Provider coupling.** The `Anthropic` and `OpenAI` classes are concrete. Every call site imports a specific SDK. Switching providers means grep-and-replace across your entire codebase. Testing means mocking SDK-specific shapes rather than a consistent interface.
 
-**No typed tool definitions.** Function calling is the backbone of agentic workflows. Both SDKs accept tool definitions as loose JSON Schema objects and return tool-call results as `unknown`. You add a wrapper layer to parse and validate, which immediately diverges when you add a second provider.
+**No typed tool definitions.** Both SDKs accept tool definitions as loose JSON Schema objects and return results as `unknown`. A wrapper layer is needed, which diverges when a second provider is added.
 
-**No shared retry or cancellation.** Each SDK has its own retry configuration. Cancellation requires passing `AbortController` manually. Structured concurrency — forking a fiber per parallel tool call and interrupting the group if any call fails — is not composable with raw Promises.
+**No shared retry or cancellation.** Each SDK has its own retry config. Cancellation requires manual `AbortController` threading. Structured concurrency — fork a fiber per tool call, interrupt the group on failure — is not composable with raw Promises.
 
-**No consistent tracing.** OpenTelemetry GenAI semantic conventions specify how to annotate spans for LLM calls (model name, token usage, finish reason). Neither SDK auto-instruments according to that spec. You add per-provider instrumentation manually and watch it drift.
+**No consistent tracing.** Neither SDK auto-instruments for OpenTelemetry GenAI semantic conventions. Per-provider instrumentation must be added manually and drifts.
 
-`@effect/ai` eliminates all four problems at once. It defines a stable, provider-agnostic vocabulary — `LanguageModel`, `EmbeddingModel`, `Tokenizer`, `Tool`, `Toolkit`, `Chat` — and wires them through Effect's `Layer` system. Provider implementations (Chapter 32) supply the concrete layer; your business logic never imports from `@anthropic-ai/sdk` or `openai` directly.
+`@effect/ai` eliminates all four problems at once. It defines a stable, provider-agnostic vocabulary — `LanguageModel`, `EmbeddingModel`, `Tokenizer`, `Tool`, `Toolkit`, `Chat` — wired through Effect's `Layer` system. Provider implementations (Chapter 32) supply the concrete layer; business logic never imports from `@anthropic-ai/sdk` or `openai` directly.
 
 > **Stability note.** `@effect/ai` is published as its own versioned package (`0.35.0` at the pinned SHA). It does not carry the `@experimental` JSDoc tag in its source (`repos/effect/packages/ai/ai/src/`), but it is a relatively young package and its API surface may evolve. Review the changelog before upgrading past `0.35.0`.
 
@@ -78,7 +78,7 @@ const program = Effect.gen(function* () {
 
 `LanguageModel.generateText` is a module-level convenience function — it resolves `LanguageModel.LanguageModel` from context and calls its `generateText` method. The `R` channel of the returned `Effect` carries `LanguageModel.LanguageModel`; swapping the provider is a one-`Layer.provide` change at the program boundary.
 
-Source: `repos/effect/packages/ai/ai/src/LanguageModel.ts:100-103` (tag), `repos/effect/packages/ai/ai/src/LanguageModel.ts:1-28` (module JSDoc).
+Source: `repos/effect/packages/ai/ai/src/LanguageModel.ts:100-103` (tag), `repos/effect/packages/ai/ai/src/LanguageModel.ts:1-50` (module JSDoc).
 
 ---
 
@@ -88,7 +88,7 @@ Source: `repos/effect/packages/ai/ai/src/LanguageModel.ts:100-103` (tag), `repos
 
 The core insight of `@effect/ai` is architectural: application code should declare *what* it needs (a language model, an embedding model, a tokenizer), not *which vendor* supplies it. Each need is expressed as a `Context.Tag`. Provider adapters fulfil those tags as `Layer` values. No call site outside the program boundary should reference a provider SDK class.
 
-This is exactly the pattern from Chapter 08 (Context and Tags) and Chapter 09 (Layer) applied to LLM infrastructure. The `LanguageModel` tag, the `EmbeddingModel` tag, and the `Tokenizer` tag are ordinary `Context.Tag` subclasses (`repos/effect/packages/ai/ai/src/LanguageModel.ts:100-103`, `repos/effect/packages/ai/ai/src/EmbeddingModel.ts:95-98`, `repos/effect/packages/ai/ai/src/Tokenizer.ts:65-68`).
+This applies the pattern from Chapter 08 (Context and Tags) and Chapter 09 (Layer) to LLM infrastructure. `LanguageModel`, `EmbeddingModel`, and `Tokenizer` are ordinary `Context.Tag` subclasses (`repos/effect/packages/ai/ai/src/LanguageModel.ts:100-103`, `repos/effect/packages/ai/ai/src/EmbeddingModel.ts:95-98`, `repos/effect/packages/ai/ai/src/Tokenizer.ts:65-68`).
 
 ### LanguageModel — the central contract
 
@@ -100,9 +100,7 @@ This is exactly the pattern from Chapter 08 (Context and Tags) and Chapter 09 (L
 
 All three are available both as instance methods on the service and as module-level convenience functions (`LanguageModel.generateText(...)`, `LanguageModel.generateObject(...)`, `LanguageModel.streamText(...)`) that resolve the tag from context.
 
-The `ExtractError<Options>` and `ExtractContext<Options>` conditional types (`repos/effect/packages/ai/ai/src/LanguageModel.ts:419-449`) propagate handler errors and context requirements from the toolkit into the returned `Effect`'s channels, so tool errors become fully typed without widening the function signature. Callers who supply no toolkit get only `AiError.AiError` in the error channel.
-
-Provider adapters do not implement the full `Service` interface from scratch. They supply only a `ConstructorParams` pair — `generateText(ProviderOptions)` and `streamText(ProviderOptions)` — and call `LanguageModel.make(params)`. The abstract `make` constructor owns tool-call resolution, span attachment, `IdGenerator` injection, and schema decoding. Source: `repos/effect/packages/ai/ai/src/LanguageModel.ts:522-553`.
+Provider adapters do not implement the full `Service` interface from scratch. They supply only a `ConstructorParams` pair — `generateText(ProviderOptions)` and `streamText(ProviderOptions)` — and call `LanguageModel.make(params)`. The abstract `make` constructor owns tool-call resolution, span attachment, `IdGenerator` injection, and schema decoding. Source: `repos/effect/packages/ai/ai/src/LanguageModel.ts:555-564` (`make` JSDoc and declaration).
 
 ### Chat — stateful multi-turn sessions
 
@@ -125,7 +123,7 @@ const multiTurn = Effect.gen(function* () {
 })
 ```
 
-`Chat.Persistence` adds backing storage so sessions survive restarts. `Chat.layerPersisted({ storeId })` wires `@effect/experimental`'s `BackingPersistence` into the session layer.
+`Chat.Persistence` adds backing storage so sessions survive restarts; `Chat.layerPersisted({ storeId })` wires `@effect/experimental`'s `BackingPersistence` into the session layer.
 
 ### EmbeddingModel — vector embeddings with built-in batching
 
@@ -222,9 +220,9 @@ Pass the toolkit to any generation call via the `toolkit` option. The abstract l
 
 ### Supervisor — observing fiber lifecycles in agentic loops
 
-Agentic workflows have a structural property that makes `Supervisor` directly applicable: when the model returns multiple tool calls in a single response, the abstract `LanguageModel.make` loop forks one fiber per tool call and runs them at the requested `concurrency`. Parallel tool execution is real structured concurrency — each tool call is a `RuntimeFiber`. You can observe that fiber tree with `Supervisor.track`.
+Agentic workflows make `Supervisor` directly applicable: when the model returns multiple tool calls, the abstract `LanguageModel.make` loop forks one fiber per tool call at the requested `concurrency`. Each tool call is a `RuntimeFiber`; the full fiber tree is observable with `Supervisor.track`.
 
-`Supervisor<T>` is an interface with four lifecycle hooks — `onStart`, `onEnd`, `onEffect`, `onSuspend` — and a `.value` effect that produces the accumulated result. Source: `repos/effect/packages/effect/src/Supervisor.ts:36-86` (interface and hooks).
+`Supervisor<T>` is an interface with five lifecycle hooks — `onStart`, `onEnd`, `onEffect`, `onSuspend`, `onResume` — and a `.value` effect that produces the accumulated result. Source: `repos/effect/packages/effect/src/Supervisor.ts:36-86` (interface and hooks).
 
 The most common constructor is `Supervisor.track` (`repos/effect/packages/effect/src/Supervisor.ts:141`), which returns an `Effect<Supervisor<Array<RuntimeFiber<any, any>>>>`. The supervisor accumulates all fibers started under it. `Supervisor.unsafeTrack()` does the same synchronously (`repos/effect/packages/effect/src/Supervisor.ts:149`).
 
@@ -251,11 +249,11 @@ const supervisedAgentTurn = Effect.gen(function* () {
 })
 ```
 
-`Supervisor` is an observability tool, not a concurrency control — use `Semaphore` or `Effect.all({ concurrency: n })` for rate limiting. The right use cases are: APM dashboards that count active tool fibers, test assertions that no fibers leaked, or debugging an agentic loop that appears to hang on tool execution. As noted in the patterns catalog (`../../research/02-patterns-catalog.md#supervisor--observe-and-react-to-fiber-lifecycle`), `Supervisor` sees the full parent-child fiber tree, which is exactly what agentic loops produce.
+`Supervisor` is an observability tool, not a concurrency control — use `Semaphore` or `Effect.all({ concurrency: n })` for rate limiting. Good uses: APM dashboards counting active tool fibers, test assertions that no fibers leaked, or debugging a hanging agentic loop. See the patterns catalog (`../../research/02-patterns-catalog.md#supervisor--observe-and-react-to-fiber-lifecycle`) for when to use it and what it replaces.
 
 ### AiError — the structured error hierarchy
 
-Five `Schema.TaggedError` variants cover the full failure surface: `HttpRequestError`, `HttpResponseError`, `MalformedInput`, `MalformedOutput`, `UnknownError`. Each carries `module` and `method` provenance fields so you know exactly which service and which call failed. Use `Effect.catchTag` for targeted recovery:
+Five `Schema.TaggedError` variants cover the failure surface: `HttpRequestError`, `HttpResponseError`, `MalformedInput`, `MalformedOutput`, `UnknownError`. Each carries `module` and `method` provenance fields. Use `Effect.catchTag` for targeted recovery:
 
 ```ts
 import { AiError } from "@effect/ai"
@@ -271,11 +269,11 @@ const withRateLimitRetry = <A>(effect: Effect.Effect<A, AiError.AiError>) =>
   )
 ```
 
-Source: `repos/effect/packages/ai/ai/src/AiError.ts:1-40` (module JSDoc).
+Source: `repos/effect/packages/ai/ai/src/AiError.ts:1-71` (module JSDoc).
 
 ### Telemetry — GenAI semantic conventions
 
-`Telemetry.addGenAIAnnotations(span, attrs)` annotates an OpenTelemetry span following the GenAI spec (`gen_ai.system`, `gen_ai.operation.name`, `gen_ai.request.model`, `gen_ai.usage.input_tokens`, etc.). Provider adapters call this automatically; application code can add custom annotations with `Effect.withSpan` (Chapter 33 covers the full tracing story). Source: `repos/effect/packages/ai/ai/src/Telemetry.ts:1-60`.
+`Telemetry.addGenAIAnnotations(span, attrs)` annotates an OpenTelemetry span with GenAI attributes (`gen_ai.system`, `gen_ai.request.model`, `gen_ai.usage.input_tokens`, etc.). Provider adapters call this automatically; application code adds custom context via `Effect.withSpan` (see Chapter 33). Source: `repos/effect/packages/ai/ai/src/Telemetry.ts:1-60`.
 
 ---
 
@@ -321,19 +319,18 @@ const agentTurn = (userMessage: string) =>
     // Track all fibers forked during this turn (tool calls fork fibers)
     const supervisor = yield* Supervisor.track
 
-    // Stream the response so tokens appear incrementally
-    const stream = LanguageModel.streamText({
-      prompt: userMessage,
-      toolkit: ProductToolkit,
-      concurrency: "unbounded",
-    }).pipe(
-      Stream.filter((part) => part.type === "text-delta"),
-      Stream.map((part) => (part.type === "text-delta" ? part.delta : "")),
-      Effect.supervised(supervisor)
-    )
-
-    // Collect the streamed text
-    const chunks = yield* Stream.runCollect(stream)
+    // Stream the response so tokens appear incrementally; supervise the Effect
+    // that consumes the stream (Effect.supervised wraps an Effect, not a Stream)
+    const chunks = yield* Stream.runCollect(
+      LanguageModel.streamText({
+        prompt: userMessage,
+        toolkit: ProductToolkit,
+        concurrency: "unbounded",
+      }).pipe(
+        Stream.filter((part) => part.type === "text-delta"),
+        Stream.map((part) => (part.type === "text-delta" ? part.delta : ""))
+      )
+    ).pipe(Effect.supervised(supervisor))
     const text = Array.from(chunks).join("")
 
     // Observe the fiber tree
@@ -343,24 +340,6 @@ const agentTurn = (userMessage: string) =>
 
     return text
   })
-
-// ── Retry on rate limit ────────────────────────────────────────────────────
-
-const agentTurnWithRetry = (userMessage: string) =>
-  agentTurn(userMessage).pipe(
-    Effect.retry(
-      Schedule.exponential("1 second").pipe(
-        Schedule.whileInput(
-          (e: unknown) =>
-            e != null &&
-            typeof e === "object" &&
-            "_tag" in e &&
-            e._tag === "HttpResponseError"
-        ),
-        Schedule.upTo("30 seconds")
-      )
-    )
-  )
 
 // ── Multi-turn chat loop ───────────────────────────────────────────────────
 
@@ -572,7 +551,7 @@ const answer = yield* LanguageModel.generateText({ prompt: userQuestion }).pipe(
 )
 ```
 
-**Running tool calls serially when they are independent.** The default `concurrency` for `generateText` when a toolkit is provided is sequential. If the model returns three tool calls that touch different services, pass `concurrency: "unbounded"` (or a number) to run them in parallel.
+**Running tool calls serially when they are independent.** The default `concurrency` for `generateText` with a toolkit is sequential. Pass `concurrency: "unbounded"` (or a number) to run independent tool calls in parallel.
 
 ```ts
 // Wrong: tool calls execute one at a time even when independent
