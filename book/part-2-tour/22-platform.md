@@ -2,7 +2,7 @@
 
 > **Package(s):** `@effect/platform`
 > **Patterns introduced:** [The `internal/` folder and `index.ts` re-export shape](../../research/02-patterns-catalog.md#the-internal-folder-and-indexts-re-export-shape)
-> **Reads from:** Chapter 09 (Layer — building, merging, and providing services), Chapter 14 (Schema part 1 — declaring shapes), Chapter 16 (Stream — pull-based async iteration)
+> **Reads from:** Chapter 08 (Context and Tags — the Tag/Layer pattern), Chapter 09 (Layer — building, merging, and providing services), Chapter 14 (Schema part 1 — declaring shapes), Chapter 16 (Stream — pull-based async iteration)
 > **Reads into:** Chapter 23 (platform-node — HTTP server, file system, and subprocess), Chapter 24 (platform-bun-browser — platform implementations), Chapter 25 (sql-core — the @effect/sql abstraction layer)
 > **Source pinned at:** `effect@3.21.2` (SHA `39c934c1476be389f7469433910fdf30fc4dad82`)
 
@@ -86,7 +86,7 @@ export const HttpClient: Context.Tag<HttpClient, HttpClient> = internal.tag
 
 `HttpClientRequest` and `HttpClientResponse` are the typed value types for requests and responses. `HttpClientError` holds the typed failure (`ResponseError` with status code, `RequestError` for network failures). The client is `Pipeable` — you can attach middleware with `.pipe(HttpClient.filterStatusOk)` to promote non-2xx responses into the error channel.
 
-`FetchHttpClient` (`repos/effect/packages/platform/src/FetchHttpClient.ts:1-26`) is the one concrete implementation bundled in the abstract package itself — because `globalThis.fetch` is available on all three runtimes. Its `layer` provides `HttpClient`; its `Fetch` and `RequestInit` tags allow overriding the underlying fetch function and default options.
+`FetchHttpClient` (`repos/effect/packages/platform/src/FetchHttpClient.ts:1-25`) is the one concrete implementation bundled in the abstract package itself — because `globalThis.fetch` is available on all three runtimes. Its `layer` provides `HttpClient`; its `Fetch` and `RequestInit` tags allow overriding the underlying fetch function and default options.
 
 ### HTTP server
 
@@ -94,7 +94,7 @@ export const HttpClient: Context.Tag<HttpClient, HttpClient> = internal.tag
 
 `HttpRouter` (`repos/effect/packages/platform/src/HttpRouter.ts:1-59`) is the immutable typed router. `HttpRouter<E, R>` holds a `Chunk<Route<E, R>>` and a list of mounts. Routes add `RouteContext` — containing path parameters and matched route info — to the handler's environment. The underlying route matching uses `find-my-way-ts`, a portable TypeScript port of the Fastify router, declared as a direct `dependency` in `package.json` so it works without native bindings.
 
-`HttpMiddleware` provides structural `HttpApp -> HttpApp` transforms for logging, CORS, `x-forwarded-for` header propagation, basic auth, and static file serving.
+`HttpMiddleware` provides structural `HttpApp -> HttpApp` transforms for logging, CORS, `x-forwarded-for` header propagation, search-params parsing, and per-request tracer suppression.
 
 ### HttpApi — contract-first API design
 
@@ -139,7 +139,7 @@ Errors across all IO modules flow through two `Schema.TaggedError` classes from 
 
 ### Terminal and key-value store
 
-`Terminal` (`repos/effect/packages/platform/src/Terminal.ts:14-105`) is the interactive terminal service interface. It exposes `columns`, `rows`, `isTTY`, `readInput` (returns `ReadonlyMailbox<UserInput>` scoped to a `Scope`), `readLine`, and `display`. `QuitException` is the typed error emitted when the user presses `Ctrl+C` during `readLine`. The `Terminal` tag at line 105 is what callers yield.
+`Terminal` (`repos/effect/packages/platform/src/Terminal.ts:13-105`) is the interactive terminal service interface. It exposes `columns`, `rows`, `isTTY`, `readInput` (returns `ReadonlyMailbox<UserInput>` scoped to a `Scope`), `readLine`, and `display`. `QuitException` is the typed error emitted when the user presses `Ctrl+C` during `readLine`. The `Terminal` tag at line 105 is what callers yield.
 
 `KeyValueStore` (`repos/effect/packages/platform/src/KeyValueStore.ts:1-160`) is a generic string/bytes KV interface. The `KeyValueStore` tag at line 110 provides `get`, `getUint8Array`, `set`, `remove`, `clear`, `size`, `modify`, `has`, `isEmpty`, and `forSchema` — the last derives a typed `SchemaStore<A, R>` from a `Schema` value. Three built-in layers are provided: `layerMemory` (in-process map), `layerFileSystem` (file-backed, requires `FileSystem & Path`), and `layerStorage` (browser `localStorage`, from `platform-browser`). The `prefix` combinator at line 136 is dual — both `prefix(store, "ns:")` and `store.pipe(prefix("ns:"))` work.
 
@@ -335,7 +335,7 @@ const grepLines = (pattern: string) =>
 
 **`HttpApi` for contract-first APIs:** Define the API shape once; derive the router, OpenAPI docs, and a typed client from it. See the subsection in the Tour above for the phantom-type accumulation pattern at `repos/effect/packages/platform/src/HttpApi.ts:46-74`.
 
-**`PlatformConfigProvider.fromFileTree`:** Reads Effect `Config` values from a directory tree — useful for Kubernetes ConfigMap mounts where each key is a file. `repos/effect/packages/platform/src/PlatformConfigProvider.ts:25-40`.
+**`PlatformConfigProvider.fromFileTree`:** Reads Effect `Config` values from a directory tree — useful for Kubernetes ConfigMap mounts where each key is a file. `repos/effect/packages/platform/src/PlatformConfigProvider.ts:21-40`.
 
 **`Worker` and `WorkerPool` for CPU-bound offloading:** `Worker<I, O, E>` wraps a background thread; `WorkerPool` wraps `Pool.Pool<Worker, WorkerError>` (see the Pool pattern introduced in Chapter 23). `Worker.execute` returns `Stream<O, E | WorkerError>`, so results stream back through the same combinators as any other Effect stream.
 
