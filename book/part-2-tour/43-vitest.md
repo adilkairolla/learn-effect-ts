@@ -89,7 +89,7 @@ it.effect("delayed value is available after clock advance", () =>
 
 `@effect/vitest` exposes four variants of `it`, each differing only in what environment it injects. All four are produced by the same `makeTester` factory (`repos/effect/packages/vitest/src/internal/internal.ts:86-158`), which wraps a Vitest `it` call and runs the test body through a `mapEffect` pipeline before execution.
 
-**`it.effect`** injects `TestContext` plus removes the default logger (`repos/effect/packages/vitest/src/internal/internal.ts:62-64`, `297`):
+**`it.effect`** injects `TestContext` plus removes the default logger (`repos/effect/packages/vitest/src/index.ts:183-186`; implementation detail: `repos/effect/packages/vitest/src/internal/internal.ts:62-64`):
 
 ```ts
 const TestEnv = TestContext.TestContext.pipe(
@@ -100,15 +100,15 @@ const TestEnv = TestContext.TestContext.pipe(
 
 `TestContext` is the test-aware implementation of `Clock`, `Random`, `Console`, and `Config`. The clock starts frozen at epoch zero. Any `Effect.sleep` or `Clock.sleep` call inside the test body suspends the fiber until `TestClock.adjust` or `TestClock.setTime` is called explicitly. Logger removal keeps test output clean by default — opt back in by providing `Logger.pretty` or switching to `it.live`.
 
-**`it.scoped`** is `it.effect` with an automatic `Effect.scoped` wrapper (`repos/effect/packages/vitest/src/internal/internal.ts:298`). Use it when the test body yields resources that implement `acquireRelease` — the scope closes when the test finishes, whether by success, failure, or timeout. This is the right choice for any test that opens a database connection, starts a server, or acquires a lock. Chapter 10 covers `Effect.scoped` and `Scope` in detail.
+**`it.scoped`** is `it.effect` with an automatic `Effect.scoped` wrapper (`repos/effect/packages/vitest/src/index.ts:188-191`; implementation: `repos/effect/packages/vitest/src/internal/internal.ts:299`). Use it when the test body yields resources that implement `acquireRelease` — the scope closes when the test finishes, whether by success, failure, or timeout. This is the right choice for any test that opens a database connection, starts a server, or acquires a lock. Chapter 10 covers `Effect.scoped` and `Scope` in detail.
 
-**`it.live`** runs with no injected environment at all (`repos/effect/packages/vitest/src/internal/internal.ts:299`). The real system clock is in scope, logs are emitted, and randomness is non-deterministic. Use `it.live` only for integration tests that genuinely need wall-clock time — for example, testing that an HTTP client correctly follows a `Retry-After` header. If you use `it.live` for a test that calls `Effect.sleep`, that test will wait for real time.
+**`it.live`** runs with no injected environment at all (`repos/effect/packages/vitest/src/index.ts:193-196`; implementation: `repos/effect/packages/vitest/src/internal/internal.ts:300`). The real system clock is in scope, logs are emitted, and randomness is non-deterministic. Use `it.live` only for integration tests that genuinely need wall-clock time — for example, testing that an HTTP client correctly follows a `Retry-After` header. If you use `it.live` for a test that calls `Effect.sleep`, that test will wait for real time.
 
-**`it.scopedLive`** combines `it.live` with `Effect.scoped` (`repos/effect/packages/vitest/src/internal/internal.ts:300`). This is for integration tests that acquire real resources and need real time.
+**`it.scopedLive`** combines `it.live` with `Effect.scoped` (`repos/effect/packages/vitest/src/index.ts:198-201`; implementation: `repos/effect/packages/vitest/src/internal/internal.ts:301`). This is for integration tests that acquire real resources and need real time.
 
 All four expose the full Vitest modifier chain — `.skip`, `.only`, `.skipIf(condition)`, `.runIf(condition)`, `.each(cases)`, and `.fails` — via the same `Object.assign` pattern as Vitest's own `it` (`repos/effect/packages/vitest/src/internal/internal.ts:158`).
 
-### `expect.fail` and TaggedError
+### Typed errors with `Effect.flip` and `Effect.exit`
 
 Effect's `TaggedError` (from Chapter 06) carries a `_tag` discriminant and typed fields. Inside `it.effect` or `it.scoped`, the test body is an Effect generator, so you can `yield*` a failing effect and catch the typed error directly:
 
@@ -150,10 +150,10 @@ it.effect("missing user yields NotFound", () =>
 
 ### TestClock for time-controlled tests
 
-`TestClock.adjust` advances the virtual clock by a duration, which releases all fibers sleeping until that point or earlier (`repos/effect/packages/effect/src/TestClock.ts:38-82`). The `TestClock` interface exposes three operations:
+`TestClock.adjust` advances the virtual clock by a duration, which releases all fibers sleeping until that point or earlier (`repos/effect/packages/effect/src/TestClock.ts:463-473`). The `TestClock` interface exposes three operations:
 
-- `adjust(duration)` — advance the clock by an offset from now
-- `setTime(epochMs)` — jump the clock to an absolute epoch timestamp
+- `adjust(duration)` — advance the clock by an offset from now (`repos/effect/packages/effect/src/TestClock.ts:463-473`)
+- `setTime(input)` — jump the clock to an absolute point in time; accepts `DateTime.DateTime.Input`, meaning a number (epoch milliseconds), a `Date`, or an Effect `DateTime` value (`repos/effect/packages/effect/src/TestClock.ts:495-509`)
 - `sleeps` — inspect the list of pending sleep deadlines (useful for asserting that a fiber is waiting)
 
 The canonical pattern is fork-adjust-join:
@@ -181,7 +181,7 @@ Without `TestClock`, this test would block for 30 real seconds (or forever, beca
 
 ### Runtime: the pre-built runtime per test
 
-`it.effect` uses a fresh runtime for every invocation. Internally, `makeTester` applies `mapEffect` to the test body and runs the resulting Effect through `runPromise` (`repos/effect/packages/vitest/src/internal/internal.ts:59`), which calls `Effect.runPromise` on a fully-provided, context-free Effect. This means each test gets its own `TestClock` state (always starting at epoch zero), its own `TestRandom` seed, and its own fiber tree — no bleed between tests.
+`it.effect` uses a fresh runtime for every invocation. Internally, `makeTester` applies `mapEffect` to the test body and runs the resulting Effect through `runTest` (`repos/effect/packages/vitest/src/internal/internal.ts:59`), which delegates to `runPromise` (`repos/effect/packages/vitest/src/internal/internal.ts:28-56`) — a function that forks the effect, registers an interrupt handler via `onTestFinished`, and calls `Effect.runPromise` on the resulting fiber-aware Effect. This means each test gets its own `TestClock` state (always starting at epoch zero), its own `TestRandom` seed, and its own fiber tree — no bleed between tests.
 
 The `Runtime` type represents this pre-built execution context (`repos/effect/packages/effect/src/Runtime.ts:40-53`):
 
@@ -237,11 +237,11 @@ it.layer(DatabaseLive)("user suite", (it) => {
 })
 ```
 
-The layer is built once in `beforeAll` and the scope is closed in `afterAll` (`repos/effect/packages/vitest/src/internal/internal.ts:253-274`). Every `it.effect` call in the callback receives the pre-built runtime from `Layer.toRuntimeWithMemoMap` (`repos/effect/packages/vitest/src/internal/internal.ts:219-223`). `TestContext` is merged automatically; pass `{ excludeTestServices: true }` only when you intentionally want a live-only runtime.
+The layer is built once in `beforeAll` and the scope is closed in `afterAll` (`repos/effect/packages/vitest/src/index.ts:203-255`; implementation: `repos/effect/packages/vitest/src/internal/internal.ts:253-274`). Every `it.effect` call in the callback receives the pre-built runtime from `Layer.toRuntimeWithMemoMap` (`repos/effect/packages/vitest/src/internal/internal.ts:219-223`). `TestContext` is merged automatically; pass `{ excludeTestServices: true }` only when you intentionally want a live-only runtime.
 
 ### `it.flakyTest` for retry-aware tests
 
-`flakyTest` wraps an Effect in a retry schedule: up to 10 retries while total elapsed time is within the timeout (default 30 seconds) (`repos/effect/packages/vitest/src/internal/internal.ts:278-292`). It is intended for genuinely non-deterministic effects such as polling-based assertions, port-availability checks, or external service liveness probes — not for tests that should be deterministic:
+`flakyTest` wraps an Effect in a retry schedule: up to 10 retries while total elapsed time is within the timeout (default 30 seconds) (`repos/effect/packages/vitest/src/index.ts:257-263`; implementation: `repos/effect/packages/vitest/src/internal/internal.ts:278-292`). It is intended for genuinely non-deterministic effects such as polling-based assertions, port-availability checks, or external service liveness probes — not for tests that should be deterministic:
 
 ```ts
 import { it, flakyTest } from "@effect/vitest"
@@ -292,6 +292,10 @@ interface FetchService {
 const FetchService = Context.GenericTag<FetchService>("FetchService")
 
 // --- Test double: fails the first call, succeeds on the second ---
+// NOTE: `calls` is shared across all tests in the suite because `it.layer`
+// builds the layer (and therefore the FetchService instance) once in
+// `beforeAll`. Tests that rely on specific `calls` counts must account for
+// prior test invocations, or use separate layers to isolate state.
 
 const makeFlakyFetch = Effect.gen(function*() {
   let calls = 0
