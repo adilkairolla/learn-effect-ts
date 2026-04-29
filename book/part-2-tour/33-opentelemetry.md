@@ -3,7 +3,7 @@
 > **Package(s):** `@effect/opentelemetry`
 > **Patterns introduced:** [`Effect.withSpan` / `annotateCurrentSpan` — distributed tracing](../../research/02-patterns-catalog.md#effectwithspan--annotatecurrentspan--distributed-tracing), [`Metric.counter` / `gauge` / `histogram` / `summary`](../../research/02-patterns-catalog.md#metriccounter--gauge--histogram--summary), [`Logger.make` / `withMinimumLogLevel` and `Effect.log*` family](../../research/02-patterns-catalog.md#loggermake--withminimumloglevel-and-effectlog-family)
 > **Reads from:** Chapter 23 (Platform on Node.js), Chapter 09 (Layer), Chapter 17 (Fibers and structured concurrency)
-> **Reads into:** Chapter 45 (Part III overview — worked example uses telemetry for cache events)
+> **Reads into:** Chapter 55 (Streams of cache events — eviction and hit/miss telemetry)
 > **Source pinned at:** `effect@3.21.2` (SHA `39c934c1476be389f7469433910fdf30fc4dad82`)
 
 ---
@@ -175,13 +175,14 @@ export const histogram: (
   name: string,
   boundaries: MetricBoundaries,
   description?: string
-) => Metric.Histogram
+) => Metric.Histogram<number>
 
 // repos/effect/packages/effect/src/Metric.ts:429-434  — summary
 export const summary: (options: {
   name: string; maxAge: DurationInput; maxSize: number
   error: number; quantiles: ReadonlyArray<number>
-}) => Metric.Summary
+  description?: string | undefined
+}) => Metric.Summary<number>
 ```
 
 The four types cover the four standard use cases:
@@ -213,10 +214,10 @@ When you pass `metricReader` to `NodeSdk.layer`, `Metrics.layer` is composed in 
 
 ### Pattern 3 — Logging: `Logger.make`, `withMinimumLogLevel`, and `Effect.log*`
 
-The `Effect.log*` family is the recommended way to emit log records from Effect code. The functions are defined at `repos/effect/packages/effect/src/Effect.ts:10937-10980`:
+The `Effect.log*` family is the recommended way to emit log records from Effect code. The functions are defined at `repos/effect/packages/effect/src/Effect.ts:10850-10980`:
 
 ```ts
-// repos/effect/packages/effect/src/Effect.ts:10937-10980
+// repos/effect/packages/effect/src/Effect.ts:10850-10980
 export const log: (...message: ReadonlyArray<any>) => Effect<void>
 export const logDebug: (...message: ReadonlyArray<any>) => Effect<void>
 export const logInfo: (...message: ReadonlyArray<any>) => Effect<void>
@@ -257,7 +258,7 @@ import { OTLPLogExporter } from "@opentelemetry/exporter-logs-otlp-http"
 import { BatchSpanProcessor } from "@opentelemetry/sdk-trace-base"
 import { PeriodicExportingMetricReader } from "@opentelemetry/sdk-metrics"
 import { BatchLogRecordProcessor } from "@opentelemetry/sdk-logs"
-import { Config, Effect, Layer, Metric, Duration } from "effect"
+import { Config, Effect, Layer, Metric, MetricBoundaries, Duration } from "effect"
 import { NodeHttpServer, NodeRuntime } from "@effect/platform-node"
 import { HttpRouter, HttpServer, HttpServerResponse } from "@effect/platform"
 
@@ -269,7 +270,7 @@ const httpRequestsTotal = Metric.counter("http_requests_total", {
 
 const httpDuration = Metric.histogram(
   "http_request_duration_ms",
-  Metric.linearBoundaries({ start: 0, width: 25, count: 20 }),
+  MetricBoundaries.linear({ start: 0, width: 25, count: 20 }),
   "HTTP handler latency in milliseconds"
 )
 
