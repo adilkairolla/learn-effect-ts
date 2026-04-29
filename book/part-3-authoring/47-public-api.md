@@ -105,7 +105,7 @@ export const make = (): Effect.Effect<CacheService, never> =>
 
 `CacheKey`, `CacheError`, and `CacheEvent` are local `type` aliases — not exported, not branded, not tagged. They exist here for one purpose: to make the method signatures in `CacheService` readable without importing types that do not exist yet.
 
-- **`CacheKey = string`** — Chapter 50 replaces this with `Brand.Nominal<string, "CacheKey">`. Until then, any `string` satisfies `CacheKey`.
+- **`CacheKey = string`** — Chapter 50 replaces this with `string & Brand.Brand<"CacheKey">` and a constructor `CacheKey = Brand.nominal<CacheKey>()`. Until then, any `string` satisfies `CacheKey`.
 - **`CacheError = unknown`** — Chapter 48 replaces this with a union of three `Data.TaggedError` variants (`Missing`, `Backend`, `Encoding`). Using `unknown` here is the widest possible type: the error channel accepts any error in Ch 47, which is vacuously correct (nothing can produce an error yet anyway, since `make` calls `Effect.die`).
 - **`CacheEvent = { readonly _tag: "Hit" | "Miss" | "Set" | "Evict"; readonly key: string }`** — Chapter 55 replaces this with a proper `Data.TaggedEnum` discriminated union. The inline shape here communicates the intent without introducing the full Chapter 55 machinery.
 
@@ -179,7 +179,7 @@ A single wildcard re-export. The `.js` extension is mandatory under `"moduleReso
 
 ### Tag class (subclass) over `Context.GenericTag`
 
-`Context.GenericTag` (`repos/effect/packages/effect/src/Context.ts:181-182`) creates a tag from a plain string key without defining a class:
+`Context.GenericTag` (`repos/effect/packages/effect/src/Context.ts:167-182`) creates a tag from a plain string key without defining a class:
 
 ```ts
 const Cache = Context.GenericTag<CacheService>("@example/effect-cache/Cache")
@@ -213,7 +213,7 @@ Second, it matches what Effect's own packages do. The `CacheService` pattern mir
 
 > `@experimental might be up for breaking changes`
 
-Because Part III is building a library intended for publication and long-term stability, using an `@experimental` API as the foundation of the entire `Cache` service would be a liability. A future minor release could change the generated class shape or the `Layer` interface in a way that breaks compilation for all consumers. The `Context.Tag` subclass pattern has been stable since Effect 2.0.0 (as confirmed by the `@since 2.0.0` annotation at `Context.ts:522`) and is the pattern used throughout Effect's own published packages.
+Because Part III is building a library intended for publication and long-term stability, using an `@experimental` API as the foundation of the entire `Cache` service would be a liability. A future minor release could change the generated class shape or the `Layer` interface in a way that breaks compilation for all consumers. The `Context.Tag` subclass pattern has been stable since Effect 2.0.0 (as confirmed by the `@since 2.0.0` annotation at `Context.ts:521`) and is the pattern used throughout Effect's own published packages.
 
 > _Note: If `Effect.Service` stabilizes in a future Effect release (dropping the `@experimental` tag), it would be a valid replacement for the boilerplate here. The worked example will call this out in Chapter 60's retrospective._
 
@@ -227,7 +227,7 @@ After this chapter, `src/Cache.ts` has the right shape but every implementation 
 
 - **No `Schema`-driven config.** The optional `ttlMillis` on `set` is an unvalidated `number`. Chapter 49 introduces `CacheConfig` as a `Schema.Class` that enforces TTL bounds and integrates with `Config.redacted`.
 
-- **No branded key.** `CacheKey = string` means any string satisfies the key type. Chapter 50 introduces `Brand.nominal<"CacheKey">()` to prevent accidental raw-string misuse — a `string` will no longer compile where a `CacheKey` is required.
+- **No branded key.** `CacheKey = string` means any string satisfies the key type. Chapter 50 introduces `Brand.nominal<CacheKey>()` (where `CacheKey = string & Brand.Brand<"CacheKey">`) to prevent accidental raw-string misuse — a `string` will no longer compile where a `CacheKey` is required.
 
 - **No Layer implementation.** `Cache.make` calls `Effect.die`. Chapter 51 adds `Cache.layerMemory` via `Layer.effect`; Chapter 52 adds `Cache.layerMemoryWithEviction` via `Layer.scoped`.
 
