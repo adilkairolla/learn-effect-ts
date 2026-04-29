@@ -205,7 +205,7 @@ The event system at `worked-example/src/internal/MemoryStorage.ts:89-128` and `w
 
 ### internal/ folder: refactoring freedom without a breaking change
 
-`internal/storage.ts:38-44` defines the `Storage` interface. Because it is not re-exported from `src/index.ts`, it can be extended (adding a `keys` method, changing `Entry` shape) between minor releases without a semver violation. Source: `repos/effect/packages/effect/src/index.ts:687-687`. Introduced in Chapter 54.
+`internal/storage.ts:38-44` defines the `Storage` interface. Because it is not re-exported from `src/index.ts`, it can be extended (adding a `keys` method, changing `Entry` shape) between minor releases without a semver violation. The `effect` monorepo follows the same convention: `repos/effect/packages/effect/src/index.ts` re-exports every public module (`./Effect.js`, `./Layer.js`, `./Stream.js`, …) but never re-exports anything from `internal/` subpaths. Introduced in Chapter 54.
 
 ---
 
@@ -262,3 +262,4 @@ This is the final commit in `worked-example/` for Part III of the book.
 - [Chapter 10 — Layer.scoped and Scope](../part-1-foundations/10-layer-scoped-and-scope.md) — the foundation for `Layer.scoped` and `Effect.forkScoped` used in `layerMemoryWithEviction`
 - [Chapter 17 — Fibers and concurrency](../part-1-foundations/17-fibers-and-concurrency.md) — the foundation for the eviction fiber
 - [Chapter 22 — Platform services — the abstract runtime layer](../part-2-tour/22-platform.md) — the `Context.Tag` / abstract interface pattern that `Cache` follows
+- [Chapter 33 — Observability with @effect/opentelemetry](../part-2-tour/33-opentelemetry.md) — the `Metric` API that v0.2 would wire into `makeService` for hit/miss telemetry
