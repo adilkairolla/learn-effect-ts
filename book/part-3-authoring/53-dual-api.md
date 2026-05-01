@@ -89,7 +89,11 @@ export const dual: {
 }
 ```
 
-When the arity form is used — `dual(2, body)` — `dual` checks `arguments.length` at runtime. If two or more arguments are present it runs the body directly (data-first). If fewer arguments are present it returns a curried function that accepts the subject later (data-last).
+When the arity form is used — `dual(2, body)` — `dual` checks `arguments.length` at runtime. If two or more arguments are present it runs the body directly (data-first). If fewer arguments are present it returns a *curried function* that accepts the subject later (data-last) — built for `pipe(value, fn(arg))`.
+
+That curried-function shape is the right answer for data combinators (`Ref.get`, `Chunk.map`, etc.) where the data-last form is meant to live inside a `pipe`. It is the wrong answer for **service-tag** accessors like `Cache.get`, where we want `yield* Cache.get(key)` to compose inside `Effect.gen` — yielding a curried function would throw `not iterable`. So in `Cache.ts` we hand-roll the dispatch: with all arguments we call the underlying service method directly; with one fewer argument we return `Effect.flatMap(Cache, (s) => s.get(key))` — a context-pulling Effect, not a function.
+
+The same overload-typed surface applies, but the implementation chooses `Effect.flatMap(Cache, ...)` over `dual(...)` precisely because the data-last consumer here is a `yield*` site, not a `pipe`.
 
 #### `Cache.get`
 
@@ -103,15 +107,21 @@ When the arity form is used — `dual(2, body)` — `dual` checks `arguments.len
  * @since 0.1.0
  * @category combinators
  */
-export const get: {
+static readonly get = ((...args: ReadonlyArray<unknown>): unknown => {
+  if (args.length === 1) {
+    const key = args[0] as CacheKey
+    return Effect.flatMap(Cache, (s) => s.get(key))
+  }
+  return (args[0] as CacheService).get(args[1] as CacheKey)
+}) as {
   (key: CacheKey): Effect.Effect<Option.Option<unknown>, CacheError, Cache>
   (cache: CacheService, key: CacheKey): Effect.Effect<Option.Option<unknown>, CacheError>
-} = dual(2, (cache: CacheService, key: CacheKey) => cache.get(key))
+}
 ```
 
-The arity is `2` because the data-first form takes two arguments: `(cache, key)`. When called with one argument (`key` only), `dual` returns `(cache: CacheService) => cache.get(key)`. The data-last type signature `(key: CacheKey): Effect<..., Cache>` does not literally return a function-of-service — instead, TypeScript sees the return type as `Effect<..., Cache>`, which reads the service from the environment at execution time. This matches Effect's convention throughout the core library (see `Effect.flatMap` at `repos/effect/packages/effect/src/Effect.ts:8782-8847`).
+The combinator is a `static readonly` member of the `Cache` class so callers see `Cache.get(key)` from a single `import { Cache } from "@example/effect-cache"` (the static-member layout introduced in Chapter 47). The implementation inspects `args.length`: with one argument we return a context-pulling Effect (`Effect.flatMap(Cache, …)`); with two we invoke the supplied service directly. The cast at the end binds the underlying impl signature to the public overload type.
 
-The full `Cache.ts` lines are `worked-example/src/Cache.ts:97-100`.
+This matches Effect's convention for service-tag accessors throughout the core library — see `Effect.flatMap` at `repos/effect/packages/effect/src/Effect.ts:8782-8847` for the underlying primitive that makes the data-last branch work.
 
 #### `Cache.set`
 
@@ -127,30 +137,39 @@ The full `Cache.ts` lines are `worked-example/src/Cache.ts:97-100`.
  * @since 0.1.0
  * @category combinators
  */
-export const set: {
+static readonly set = ((...args: ReadonlyArray<unknown>): unknown => {
+  if (args.length === 3) {
+    const [key, value, ttlMillis] = args as [CacheKey, unknown, number]
+    return Effect.flatMap(Cache, (s) => s.set(key, value, ttlMillis))
+  }
+  const [cache, key, value, ttlMillis] = args as [CacheService, CacheKey, unknown, number]
+  return cache.set(key, value, ttlMillis)
+}) as {
   (key: CacheKey, value: unknown, ttlMillis: number): Effect.Effect<void, CacheError, Cache>
   (cache: CacheService, key: CacheKey, value: unknown, ttlMillis: number): Effect.Effect<void, CacheError>
-} = dual(4, (cache: CacheService, key: CacheKey, value: unknown, ttlMillis: number) =>
-  cache.set(key, value, ttlMillis))
+}
 ```
 
-Note that `ttlMillis` is **required** here (`number`, not `number | undefined`). See the design discussion below for why.
-
-Full lines: `worked-example/src/Cache.ts:117-121`.
+Note that `ttlMillis` is **required** here (`number`, not `number | undefined`). See the design discussion below for why. Three user args + the optional service prefix means the dispatch checks for `args.length === 3` (data-last) versus `4` (data-first).
 
 #### `Cache.delete`
 
-`delete` is a JavaScript reserved word. You cannot write `export const delete = ...` at the top level of a module. The workaround is an internal name with an explicit re-export rename:
+`delete` is a JavaScript reserved word at the top level of a module — but it is allowed as a **class member name**. Putting the combinator on the `Cache` class lets us name it `delete` directly with no rename gymnastics:
 
 ```ts
-export const _delete: {
+static readonly delete = ((...args: ReadonlyArray<unknown>): unknown => {
+  if (args.length === 1) {
+    const key = args[0] as CacheKey
+    return Effect.flatMap(Cache, (s) => s.delete(key))
+  }
+  return (args[0] as CacheService).delete(args[1] as CacheKey)
+}) as {
   (key: CacheKey): Effect.Effect<void, CacheError, Cache>
   (cache: CacheService, key: CacheKey): Effect.Effect<void, CacheError>
-} = dual(2, (cache: CacheService, key: CacheKey) => cache.delete(key))
-export { _delete as delete }
+}
 ```
 
-Callers see `Cache.delete(key)` and `Cache.delete(service, key)` exactly as they would for any other combinator. The `_delete` name is an internal implementation detail. Full lines: `worked-example/src/Cache.ts:135-139`.
+Callers write `Cache.delete(key)` and `Cache.delete(service, key)` exactly as they would for any other combinator. (If we had stayed with top-level `export const`, we would have needed the `export { _delete as delete }` rename trick — see the precedent at `repos/effect/packages/effect/src/FiberRef.ts`.)
 
 #### `Cache.invalidate`
 
@@ -163,13 +182,13 @@ Callers see `Cache.delete(key)` and `Cache.delete(service, key)` exactly as they
  * @since 0.1.0
  * @category combinators
  */
-export const invalidate: Effect.Effect<void, CacheError, Cache> = Effect.flatMap(
+static readonly invalidate: Effect.Effect<void, CacheError, Cache> = Effect.flatMap(
   Cache,
   (s) => s.invalidate
 )
 ```
 
-`Effect.flatMap(Cache, f)` reads the `Cache` service from the context, passes it to `f`, and flattens the result. `Cache` here is both the class and a valid `Effect` that yields the service — a property of `Context.Tag` subclasses (see [Chapter 08 — Context and Tags](../part-1-foundations/08-context-and-tags.md)). Full lines: `worked-example/src/Cache.ts:152-155`.
+`Effect.flatMap(Cache, f)` reads the `Cache` service from the context, passes it to `f`, and flattens the result. `Cache` here is both the class and a valid `Effect` that yields the service — a property of `Context.Tag` subclasses (see [Chapter 08 — Context and Tags](../part-1-foundations/08-context-and-tags.md)). The static field can refer to `Cache` because static initializers run in source order *after* the class binding is in scope.
 
 ---
 
@@ -191,7 +210,7 @@ The trade-off is that callers must always supply an explicit TTL at the `Cache.s
 
 ### The `delete` reserved-word workaround
 
-JavaScript's reserved words (`delete`, `in`, `new`, `typeof`, and others) cannot appear as top-level variable declarations. The three options are: rename the export (`remove`), prefix it (`_delete`), or declare internally under a prefixed name and re-export with `export { _delete as delete }`. The third option is used here because callers see the idiomatic `Cache.delete` name, IDEs autocomplete it correctly, and the rename is entirely invisible at the call site. The precedent exists in the Effect source: `repos/effect/packages/effect/src/FiberRef.ts` uses `export { _delete as delete }` for the same reason.
+JavaScript's reserved words (`delete`, `in`, `new`, `typeof`, and others) cannot appear as top-level variable declarations — `export const delete = ...` is a syntax error. Class member names are exempt: `static readonly delete = ...` is legal because the class scope already disambiguates the identifier from the operator. Putting the combinators on the `Cache` class therefore lets us name the method `delete` directly with no rename trick. (The Effect source still uses `export { _delete as delete }` in `repos/effect/packages/effect/src/FiberRef.ts` because its accessors live at the module top level — a different layout choice.)
 
 ### Why `invalidate` is a value
 

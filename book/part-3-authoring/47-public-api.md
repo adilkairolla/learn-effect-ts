@@ -88,17 +88,19 @@ export interface CacheService {
 }
 
 /**
- * The Cache service tag. Use `Effect.gen` and `yield* Cache` to access the service
- * inside an Effect, or pass a Cache implementation via `Effect.provideService(Cache, impl)`.
+ * The Cache service tag — and the surface for every static accessor we add in
+ * later chapters (`Cache.layerMemory`, `Cache.get`, etc.). Use `yield* Cache`
+ * to pull the service from context inside `Effect.gen`.
  */
-export class Cache extends Context.Tag("@example/effect-cache/Cache")<Cache, CacheService>() {}
-
-/**
- * Stub `.make` constructor — returns a placeholder service. The real implementations
- * land in Chapter 51 (`Cache.layerMemory`) and Chapter 52 (`Cache.layerMemoryWithEviction`).
- */
-export const make = (): Effect.Effect<CacheService, never> =>
-  Effect.die("Cache.make: not implemented yet — see Chapter 51 for the in-memory layer")
+export class Cache extends Context.Tag("@example/effect-cache/Cache")<Cache, CacheService>() {
+  /**
+   * Stub `.make` constructor — returns a placeholder service. The real
+   * implementations land in Chapter 51 (`Cache.layerMemory`) and Chapter 52
+   * (`Cache.layerMemoryWithEviction`).
+   */
+  static readonly make = (): Effect.Effect<CacheService, never> =>
+    Effect.die("Cache.make: not implemented yet — see Chapter 51 for the in-memory layer")
+}
 ```
 
 #### The placeholder types
@@ -159,11 +161,23 @@ export class CurrentTimeZone extends Context.Tag("effect/DateTime/CurrentTimeZon
 #### The `make` stub
 
 ```ts
-export const make = (): Effect.Effect<CacheService, never> =>
+static readonly make = (): Effect.Effect<CacheService, never> =>
   Effect.die("Cache.make: not implemented yet — see Chapter 51 for the in-memory layer")
 ```
 
 `Effect.die` produces a defect — an unrecoverable error that bypasses the typed error channel. This is the correct signal for a stub: it should not compile silently into a `never` or return `undefined`; it should crash immediately and visibly if called before the real implementation lands. The error channel is `never` because the stub never fails with a typed error.
+
+The stub is declared as a `static readonly` member of the `Cache` class rather than a top-level `export const`. That choice is the chapter's load-bearing decision: every accessor we add later — `layerMemory` (Ch 51), `layerMemoryWithEviction` (Ch 52), the dual combinators `get`/`set`/`delete`/`invalidate`/`events` (Ch 53, Ch 55) — will be a static member of this same class. Callers get the tag and the entire public surface from one identifier:
+
+```ts
+import { Cache } from "@example/effect-cache"
+
+yield* Cache                          // pull the service (Cache is the Tag)
+Cache.layerMemory                     // the layer (static)
+Cache.get(key)                        // dual combinator (static)
+```
+
+This is a deliberate Part-III simplification of Effect's namespace re-export convention (see [`research/03-conventions.md`](../../research/03-conventions.md#indexts-re-export-shape)). A larger package would split each module and rely on `import * as Cache from "@example/effect-cache/Cache"` so callers write `Cache.Cache` for the tag. Bundling tag + accessors as static members keeps the worked example readable from a single `import { Cache } from ...` line — the tradeoff is that the Cache class file grows as more accessors land.
 
 ### `src/index.ts` (new)
 

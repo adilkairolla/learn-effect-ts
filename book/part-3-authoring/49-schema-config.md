@@ -75,31 +75,44 @@ export class CacheConfig extends Schema.Class<CacheConfig>("CacheConfig")({
   defaultTtlMillis: Schema.Number.pipe(Schema.int(), Schema.positive()),
   maxEntries: Schema.Number.pipe(Schema.int(), Schema.positive()),
   evictionIntervalMillis: Schema.Number.pipe(Schema.int(), Schema.positive())
-}) {}
+}) {
+  /** Context tag — `yield* CacheConfig.Tag` to read the config in `Effect.gen`. */
+  static readonly Tag = Context.GenericTag<CacheConfig>("@example/effect-cache/CacheConfig")
 
-/**
- * Load `CacheConfig` from process environment via `Config`. Each env var is loaded
- * as an integer, then the whole object is run through `Schema.decode(CacheConfig)`
- * for the per-field invariants (positivity, etc).
- *
- * Default env var names:
- * - `CACHE_DEFAULT_TTL_MS`
- * - `CACHE_MAX_ENTRIES`
- * - `CACHE_EVICTION_INTERVAL_MS`
- *
- * @since 0.1.0
- * @category constructors
- */
-export const load: Effect.Effect<CacheConfig, ConfigError.ConfigError | ParseResult.ParseError> =
-  Effect.gen(function* () {
-    const raw = yield* Config.all({
-      defaultTtlMillis: Config.integer("CACHE_DEFAULT_TTL_MS"),
-      maxEntries: Config.integer("CACHE_MAX_ENTRIES"),
-      evictionIntervalMillis: Config.integer("CACHE_EVICTION_INTERVAL_MS")
+  /**
+   * Load `CacheConfig` from process environment via `Config`. Each env var is
+   * loaded as an integer, then the whole object is run through
+   * `Schema.decode(CacheConfig)` for the per-field invariants.
+   *
+   * Default env var names:
+   * - `CACHE_DEFAULT_TTL_MS`
+   * - `CACHE_MAX_ENTRIES`
+   * - `CACHE_EVICTION_INTERVAL_MS`
+   */
+  static readonly load: Effect.Effect<CacheConfig, ConfigError.ConfigError | ParseResult.ParseError> =
+    Effect.gen(function* () {
+      const raw = yield* Config.all({
+        defaultTtlMillis: Config.integer("CACHE_DEFAULT_TTL_MS"),
+        maxEntries: Config.integer("CACHE_MAX_ENTRIES"),
+        evictionIntervalMillis: Config.integer("CACHE_EVICTION_INTERVAL_MS")
+      })
+      return yield* Schema.decode(CacheConfig)(raw)
     })
-    return yield* Schema.decode(CacheConfig)(raw)
-  })
+
+  /**
+   * Convenience layer wiring `CacheConfig.load` into `CacheConfig.Tag`.
+   * Compose with `Cache.layerMemory` via `Layer.provide`:
+   *
+   * ```ts
+   * const App = Cache.layerMemory.pipe(Layer.provide(CacheConfig.layer))
+   * ```
+   */
+  static readonly layer: Layer.Layer<CacheConfig, ConfigError.ConfigError | ParseResult.ParseError> =
+    Layer.effect(CacheConfig.Tag, CacheConfig.load)
+}
 ```
+
+`load` and `layer` are static members of the `CacheConfig` class so the public surface lines up with what later chapters use: `CacheConfig.load`, `CacheConfig.layer`, and `CacheConfig.Tag`. This matches the static-member pattern Chapter 47 set up for the `Cache` class — see [Ch. 47 — Designing the public API](47-public-api.md) for the rationale.
 
 #### `Schema.Class` — the class factory
 

@@ -286,18 +286,22 @@ export const empty: Stream<never> = internal.empty
 
   // ... CacheService, Cache tag, make stub unchanged ...
 
-+ /**
-+  * In-memory CacheService Layer. Backed by a Ref<HashMap<CacheKey, Entry>>.
-+  * Reads CacheConfig from the environment.
-+  *
-+  * No eviction — see Chapter 52 for layerMemoryWithEviction.
-+  *
-+  * @since 0.1.0
-+  * @category layers
-+  */
-+ export const layerMemory: Layer.Layer<Cache, never, CacheConfig> =
-+   Layer.effect(Cache, MemoryStorage.make)
+  // Inside the existing `class Cache extends Context.Tag(...)<Cache, CacheService>() { ... }`:
+
++   /**
++    * In-memory CacheService Layer. Backed by a Ref<HashMap<CacheKey, Entry>>.
++    * Reads CacheConfig from the environment.
++    *
++    * No eviction — see Chapter 52 for layerMemoryWithEviction.
++    *
++    * @since 0.1.0
++    * @category layers
++    */
++   static readonly layerMemory: Layer.Layer<Cache, never, CacheConfig> =
++     Layer.effect(Cache, MemoryStorage.make)
 ```
+
+`layerMemory` is added as a `static readonly` member of the `Cache` class — the layout introduced in Chapter 47 so that the entire public surface lives under a single `import { Cache }`. The static initializer can refer to `Cache` because static fields run *after* the class binding is in scope.
 
 **`Layer.effect`** — `repos/effect/packages/effect/src/Layer.ts:283-292`
 

@@ -112,7 +112,7 @@ The `@example` block for `Cache.layerMemory` shows the `Layer.provide` compositi
  * @since 0.1.0
  * @category layers
  */
-export const layerMemory: Layer.Layer<Cache, never, CacheConfig> = Layer.effect(Cache, MemoryStorage.make)
+static readonly layerMemory: Layer.Layer<Cache, never, CacheConfig> = Layer.effect(Cache, MemoryStorage.make)
 ```
 
 The `Cache.get` dual combinator gains an `@example` that shows both call signatures side by side, making the data-last vs data-first distinction concrete:
@@ -173,7 +173,7 @@ The new `Cache.events` combinator — added at the bottom of `Cache.ts` — is a
  * @since 0.1.0
  * @category combinators
  */
-export const events: Effect.Effect<Stream.Stream<CacheEvent>, never, Cache> = Effect.map(
+static readonly events: Effect.Effect<Stream.Stream<CacheEvent>, never, Cache> = Effect.map(
   Cache,
   (s) => s.events
 )

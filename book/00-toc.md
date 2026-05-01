@@ -8,6 +8,7 @@
 - **Linear:** Part I → Part II → Part III, in number order.
 - **By goal:** see "Reading paths by goal" below.
 - **Reference:** [Glossary](00-glossary.md), [Cheatsheet](00-cheatsheet.md), [Patterns Catalog](../research/02-patterns-catalog.md).
+- **After Chapter 60:** [Where to go next](00-after-this-book.md) — community, ongoing reading, and what to build next.
 
 ## Part I — Foundations
 

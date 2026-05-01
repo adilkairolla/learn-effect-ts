@@ -1,0 +1,237 @@
+@import "@fontsource-variable/eb-garamond/wght.css";
+@import "@fontsource-variable/eb-garamond/wght-italic.css";
+@import "@fontsource/iosevka/latin-400.css";
+@import "@fontsource/iosevka/latin-700.css";
+@import "./fonts.css";
+@import "tailwindcss";
+@plugin "@tailwindcss/typography";
+
+@theme {
+  --font-serif: var(--font-serif-stack);
+  --font-mono: var(--font-mono-stack);
+  --font-sans: var(--font-serif);
+
+  --color-cobalt-50: #eef3ff;
+  --color-cobalt-100: #d9e3ff;
+  --color-cobalt-300: #7e9cff;
+  --color-cobalt-500: #2c54e3;
+  --color-cobalt-600: #1a3ec9;
+  --color-cobalt-700: #16329f;
+
+  --color-paper: #fbfbfb;
+  --color-ink: #0a0a0a;
+}
+
+:root {
+  color-scheme: light;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-serif);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  font-size: 16px;
+  line-height: 1.55;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+a:hover {
+  color: var(--color-cobalt-600);
+}
+
+.toc-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: baseline;
+  column-gap: 0.5rem;
+}
+
+.toc-row .leader {
+  border-bottom: 1px dotted rgba(0, 0, 0, 0.25);
+  transform: translateY(-3px);
+  height: 0;
+  align-self: end;
+}
+
+.toc-row:hover .title,
+.toc-row:hover .words {
+  color: var(--color-cobalt-600);
+}
+
+.toc-row:hover .title {
+  text-decoration: underline;
+  text-decoration-color: rgba(26, 62, 201, 0.5);
+  text-underline-offset: 2px;
+}
+
+.toc-row .title {
+  text-decoration: underline;
+  text-decoration-color: rgba(26, 62, 201, 0.18);
+  text-underline-offset: 2px;
+  text-decoration-thickness: 1px;
+}
+
+.chapter-prose {
+  font-family: var(--font-serif);
+  font-size: 1.0625rem;
+  line-height: 1.65;
+  color: rgba(0, 0, 0, 0.86);
+}
+
+.chapter-prose h1,
+.chapter-prose h2,
+.chapter-prose h3,
+.chapter-prose h4 {
+  font-family: var(--font-serif);
+  letter-spacing: -0.01em;
+  color: rgba(0, 0, 0, 0.92);
+  font-weight: 500;
+}
+
+.chapter-prose h1 {
+  display: none;
+}
+
+.chapter-prose h2 {
+  font-size: 1.6rem;
+  margin: 2.6rem 0 1rem;
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
+  padding-top: 1.6rem;
+}
+
+.chapter-prose h3 {
+  font-size: 1.25rem;
+  margin: 2rem 0 0.75rem;
+}
+
+.chapter-prose h4 {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin: 1.5rem 0 0.5rem;
+  color: rgba(0, 0, 0, 0.55);
+}
+
+.chapter-prose p {
+  margin: 0.9rem 0;
+}
+
+.chapter-prose a {
+  color: var(--color-cobalt-600);
+  text-decoration: underline;
+  text-decoration-color: rgba(26, 62, 201, 0.4);
+  text-underline-offset: 2px;
+  text-decoration-skip-ink: all;
+}
+
+.chapter-prose a:hover {
+  text-decoration-color: var(--color-cobalt-600);
+}
+
+.chapter-prose blockquote {
+  border-left: 2px solid rgba(0, 0, 0, 0.15);
+  padding: 0.4rem 0 0.4rem 1rem;
+  margin: 1.4rem 0;
+  color: rgba(0, 0, 0, 0.7);
+  font-style: italic;
+  background: rgba(0, 0, 0, 0.02);
+}
+
+.chapter-prose blockquote p {
+  margin: 0.4rem 0;
+}
+
+.chapter-prose ul,
+.chapter-prose ol {
+  margin: 1rem 0;
+  padding-left: 1.5rem;
+}
+
+.chapter-prose li {
+  margin: 0.35rem 0;
+}
+
+.chapter-prose code {
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  background: rgba(0, 0, 0, 0.06);
+  padding: 1px 5px;
+  border-radius: 3px;
+}
+
+.chapter-prose pre {
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  line-height: 1.55;
+  background: #fafaf7;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  padding: 1rem 1.1rem;
+  border-radius: 4px;
+  overflow-x: auto;
+  margin: 1.2rem 0;
+}
+
+.chapter-prose pre.shiki {
+  background: #fafaf7 !important;
+}
+
+.chapter-prose pre code {
+  background: transparent;
+  padding: 0;
+  border-radius: 0;
+  font-size: inherit;
+}
+
+.chapter-prose table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4rem 0;
+  font-size: 0.9rem;
+}
+
+.chapter-prose th,
+.chapter-prose td {
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  padding: 0.5rem 0.7rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+.chapter-prose th {
+  background: rgba(0, 0, 0, 0.03);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.chapter-prose hr {
+  border: 0;
+  border-top: 1px solid rgba(0, 0, 0, 0.1);
+  margin: 2rem 0;
+}
+
+.chapter-card {
+  background: #ffffff;
+  border-radius: 4px;
+  box-shadow:
+    0 1px 4px 1px rgba(0, 0, 0, 0.05),
+    0 1px 1px 0 rgba(0, 0, 0, 0.5),
+    0 -1px 1px 1px #fff inset;
+}

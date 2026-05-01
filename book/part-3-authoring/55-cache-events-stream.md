@@ -185,8 +185,9 @@ The PubSub is passed in by the caller (either `Cache.ts`'s `layerMemoryWithEvict
 import type { CacheEvent } from "./CacheEvent.js"
 import * as PubSub from "effect/PubSub"
 
-// layerMemoryWithEviction now creates the shared PubSub:
-export const layerMemoryWithEviction: Layer.Layer<Cache, never, CacheConfig> = Layer.scoped(
+// layerMemoryWithEviction now creates the shared PubSub.
+// Inside `class Cache extends Context.Tag(...)<Cache, CacheService>() { ... }`:
+static readonly layerMemoryWithEviction: Layer.Layer<Cache, never, CacheConfig> = Layer.scoped(
   Cache,
   Effect.gen(function* () {
     const storage = yield* MemoryStorage.makeStorage
@@ -194,6 +195,12 @@ export const layerMemoryWithEviction: Layer.Layer<Cache, never, CacheConfig> = L
     yield* Eviction.runEviction(storage, pubsub)
     return yield* MemoryStorage.makeService(storage, pubsub)
   })
+)
+
+// And the public `events` accessor — a context-pulling Effect that yields the stream:
+static readonly events: Effect.Effect<Stream.Stream<CacheEvent>, never, Cache> = Effect.map(
+  Cache,
+  (s) => s.events
 )
 ```
 

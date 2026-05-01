@@ -1,0 +1,45 @@
+{
+  "languages": {
+    "JavaScript": {
+      "language_servers": ["oxc", "..."],
+      "formatter": {
+        "external": {
+          "command": "./node_modules/.bin/oxfmt",
+          "arguments": ["--stdin-filepath", "{buffer_path}"],
+        },
+      },
+      "format_on_save": "on",
+    },
+    "TypeScript": {
+      "language_servers": ["oxc", "..."],
+      "formatter": {
+        "external": {
+          "command": "./node_modules/.bin/oxfmt",
+          "arguments": ["--stdin-filepath", "{buffer_path}"],
+        },
+      },
+      "format_on_save": "on",
+    },
+    "TSX": {
+      "language_servers": ["oxc", "..."],
+      "formatter": {
+        "external": {
+          "command": "./node_modules/.bin/oxfmt",
+          "arguments": ["--stdin-filepath", "{buffer_path}"],
+        },
+      },
+      "format_on_save": "on",
+    },
+    "JSX": {
+      "language_servers": ["oxc", "..."],
+      "formatter": {
+        "external": {
+          "command": "./node_modules/.bin/oxfmt",
+          "arguments": ["--stdin-filepath", "{buffer_path}"],
+        },
+      },
+      "format_on_save": "on",
+    },
+  },
+  "file_scan_exclusions": ["**/routeTree.gen.ts"],
+}

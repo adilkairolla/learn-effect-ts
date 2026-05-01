@@ -160,11 +160,13 @@ export const runEviction = (
 import * as Eviction from "./internal/eviction.js"
 import * as MemoryStorage from "./internal/MemoryStorage.js"
 
+// Inside `class Cache extends Context.Tag(...)<Cache, CacheService>() { ... }`:
+
 // layerMemory is unchanged — still Layer.effect, no Scope.
-export const layerMemory: Layer.Layer<Cache, never, CacheConfig> =
+static readonly layerMemory: Layer.Layer<Cache, never, CacheConfig> =
   Layer.effect(Cache, MemoryStorage.make)
 
-export const layerMemoryWithEviction: Layer.Layer<Cache, never, CacheConfig> =
+static readonly layerMemoryWithEviction: Layer.Layer<Cache, never, CacheConfig> =
   Layer.scoped(
     Cache,
     Effect.gen(function* () {

@@ -357,7 +357,7 @@ const counter = Effect.gen(function* () {
 | `Stream.fromIterable` / `asyncPush` / `paginate` | [Ch. 16](part-1-foundations/16-stream.md) · [Catalog](../research/02-patterns-catalog.md#streammake--fromiterable--fromeffect) |
 | `Effect.fork` / `Fiber.join` / `interrupt` | [Ch. 17](part-1-foundations/17-fibers-and-concurrency.md) · [Catalog](../research/02-patterns-catalog.md#effectfork--forkdaemon--forkscoped--forkin) |
 | `Effect.acquireRelease` + `Effect.scoped` | [Ch. 10](part-1-foundations/10-layer-scoped-and-scope.md) · [Catalog](../research/02-patterns-catalog.md#effectacquirerelease--acquireuserelease) |
-| `Schedule.exponential` / `jittered` / `recurs` | [Ch. 34](part-2-packages/34-schedule.md) · [Catalog](../research/02-patterns-catalog.md#schedulespaced--exponential--fixed--recurs) |
-| `Match.value` / `Match.exhaustive` | [Ch. 39](part-2-packages/39-match.md) · [Catalog](../research/02-patterns-catalog.md#matchvalue--matchtype--starting-a-match) |
-| `Config.string` / `nested` / `Config.all` | [Ch. 38](part-2-packages/38-config-and-secrets.md) · [Catalog](../research/02-patterns-catalog.md#configstring--integer--boolean--nested--all) |
-| `Ref.make` / `update` / `get` | [Ch. 36](part-2-packages/36-concurrency-primitives.md) · [Catalog](../research/02-patterns-catalog.md#ref--atomic-mutable-cell) |
+| `Schedule.exponential` / `jittered` / `recurs` | [Ch. 34](part-2-tour/34-schedule.md) · [Catalog](../research/02-patterns-catalog.md#schedulespaced--exponential--fixed--recurs) |
+| `Match.value` / `Match.exhaustive` | [Ch. 39](part-2-tour/39-match.md) · [Catalog](../research/02-patterns-catalog.md#matchvalue--matchtype--starting-a-match) |
+| `Config.string` / `nested` / `Config.all` | [Ch. 38](part-2-tour/38-config-and-secrets.md) · [Catalog](../research/02-patterns-catalog.md#configstring--integer--boolean--nested--all) |
+| `Ref.make` / `update` / `get` | [Ch. 36](part-2-tour/36-concurrency-primitives.md) · [Catalog](../research/02-patterns-catalog.md#ref--atomic-mutable-cell) |

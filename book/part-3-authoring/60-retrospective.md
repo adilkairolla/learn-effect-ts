@@ -256,6 +256,7 @@ This is the final commit in `worked-example/` for Part III of the book.
 - [Chapter 57 — Documenting with JSDoc — @since, @category, @example](./57-jsdoc.md)
 - [Chapter 58 — Versioning and exports map — package.json exports field](./58-versioning-and-exports.md)
 - [Chapter 59 — Publishing checklist — peer deps, changesets, and release](./59-publishing.md)
+- [After this book — where to go next](../00-after-this-book.md) — community, ongoing reading, and v0.2 ideas
 - [Effect TS Patterns Catalog](../../research/02-patterns-catalog.md)
 - [SQL backend research note](../../research/packages/sql.md) — the approach a `@effect/sql`-backed `Storage` implementation would take
 - [Book design brainstorming spec](../../docs/superpowers/specs/2026-04-28-effect-ts-book-design.md) — the original brief that shaped Part III
